@@ -1,0 +1,12 @@
+feeds:
+  - name: "npj Computational Materials - Latest Articles"
+    url: "https://www.nature.com/npjcompumats.rss"
+    issn: "2057-3960"
+
+  - name: "Physical Review Materials - Latest Articles"
+    url: "https://journals.aps.org/prmaterials/rss/10.1103/PhysRevMaterials"
+    issn: "2475-9953"
+
+  - name: "Computational Materials Science - Latest Articles"
+    url: "https://rss.sciencedirect.com/publication/science/09270256"
+    issn: "0927-0256"
