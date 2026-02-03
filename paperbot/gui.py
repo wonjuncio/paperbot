@@ -69,11 +69,20 @@ def run_gui() -> None:
 
     tab_new, tab_picked, tab_archive = st.tabs(["New", "Picked", "Archive"])
 
+    journals = repo.get_distinct_journals()
+    journal_options = ["All"] + (journals if journals else [])
+
     with tab_new:
         st.subheader("New papers")
-        papers = repo.find_by_status("new", limit=200, sort_by="id")
+        selected_journal_new = st.selectbox(
+            "Filter by journal",
+            options=journal_options,
+            key="new_journal_filter",
+        )
+        journal_filter_new = None if selected_journal_new == "All" else selected_journal_new
+        papers = repo.find_by_status("new", limit=200, sort_by="id", journal=journal_filter_new)
         if not papers:
-            st.info("No new papers. Click Fetch New Papers.")
+            st.info("No new papers. Click Fetch New Papers." if journal_filter_new is None else f"No new papers for journal: {journal_filter_new}")
         else:
             _display_paper_table(papers, repo)
 
@@ -96,9 +105,15 @@ def run_gui() -> None:
 
     with tab_archive:
         st.subheader("All papers")
-        all_papers = repo.find_all(limit=500, sort_by="date")
+        selected_journal_archive = st.selectbox(
+            "Filter by journal",
+            options=journal_options,
+            key="archive_journal_filter",
+        )
+        journal_filter_archive = None if selected_journal_archive == "All" else selected_journal_archive
+        all_papers = repo.find_all(limit=500, sort_by="date", journal=journal_filter_archive)
         if not all_papers:
-            st.info("No papers yet.")
+            st.info("No papers yet." if journal_filter_archive is None else f"No papers for journal: {journal_filter_archive}")
         else:
             data = []
             for p in all_papers:

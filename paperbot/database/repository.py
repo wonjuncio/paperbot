@@ -120,6 +120,7 @@ class PaperRepository:
         status: str,
         limit: int = 50,
         sort_by: str = "id",
+        journal: Optional[str] = None,
     ) -> list[Paper]:
         """Find papers by status (or pseudo-status 'picked' for is_picked=1).
 
@@ -127,6 +128,7 @@ class PaperRepository:
             status: 'new', 'archived', 'read', or 'picked' (is_picked=1)
             limit: Maximum number of papers to return
             sort_by: Sort key - 'id', 'date', or 'title' (default: id)
+            journal: If set, filter by this journal name only.
 
         Returns:
             List of Paper objects
@@ -143,10 +145,13 @@ class PaperRepository:
             where_clause = "is_picked = 1"
         else:
             where_clause = "status = ?"
+        if journal is not None:
+            where_clause += " AND journal = ?"
 
         with self._connection() as conn:
             cursor = conn.cursor()
             if status == "picked":
+                params: tuple = (limit,) if journal is None else (journal, limit)
                 cursor.execute(
                     f"""
                     SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, created_at
@@ -155,9 +160,10 @@ class PaperRepository:
                     ORDER BY {order}
                     LIMIT ?
                     """,
-                    (limit,),
+                    params,
                 )
             else:
+                params = (status, limit) if journal is None else (status, journal, limit)
                 cursor.execute(
                     f"""
                     SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, created_at
@@ -166,7 +172,7 @@ class PaperRepository:
                     ORDER BY {order}
                     LIMIT ?
                     """,
-                    (status, limit),
+                    params,
                 )
             rows = cursor.fetchall()
 
@@ -256,12 +262,30 @@ class PaperRepository:
             "picked": picked,
         }
 
-    def find_all(self, limit: int = 500, sort_by: str = "id") -> list[Paper]:
+    def get_distinct_journals(self) -> list[str]:
+        """Return distinct non-null journal names from the DB, sorted.
+
+        Returns:
+            Sorted list of journal name strings.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT DISTINCT journal FROM papers
+                WHERE journal IS NOT NULL AND journal != ''
+                ORDER BY journal ASC
+                """
+            )
+            return [row["journal"] for row in cursor.fetchall()]
+
+    def find_all(self, limit: int = 500, sort_by: str = "id", journal: Optional[str] = None) -> list[Paper]:
         """Find papers from all statuses (for archive view).
 
         Args:
             limit: Maximum number of papers to return
             sort_by: 'id', 'date', or 'title'
+            journal: If set, filter by this journal name only.
 
         Returns:
             List of Paper objects
@@ -272,16 +296,19 @@ class PaperRepository:
             "title": "title ASC",
         }
         order = order_clauses.get(sort_by, "id DESC")
+        where_clause = "" if journal is None else "WHERE journal = ?"
+        params: tuple = (limit,) if journal is None else (journal, limit)
         with self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 f"""
                 SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, created_at
                 FROM papers
+                {where_clause}
                 ORDER BY {order}
                 LIMIT ?
                 """,
-                (limit,),
+                params,
             )
             rows = cursor.fetchall()
 

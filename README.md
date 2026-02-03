@@ -32,7 +32,7 @@ cp .env.example .env
 CONTACT_EMAIL=you@example.com
 ```
 
-이메일은 Crossref API의 "polite pool" 사용을 위해 권장됩니다.
+이메일은 Crossref API의 "polite pool" 사용을 위해 권장된다.
 
 3. `feeds.yaml` 편집하여 수집할 저널 RSS 추가
 
@@ -219,4 +219,4 @@ uv run paperbot export
 </details>
 
 # 기여
-오류 발견이나 기능 제안이 있으면 이메일로 알려주시거나 [Pull Request](https://github.com/wonjuncio/paperbot/pulls)를 보내주세요.
+오류 발견이나 기능 제안이 있으면 이메일로 알려주시거나 [Pull Request](https://github.com/wonjunchoii/paperbot/pulls)를 보내주세요.

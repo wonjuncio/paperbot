@@ -44,8 +44,8 @@ dev = [
 paperbot = "paperbot.__main__:run"
 
 [project.urls]
-Homepage = "https://github.com/wonjuncio/paperbot"
-Repository = "https://github.com/wonjuncio/paperbot"
+Homepage = "https://github.com/wonjunchoii/paperbot"
+Repository = "https://github.com/wonjunchoii/paperbot"
 
 [build-system]
 requires = ["hatchling"]
