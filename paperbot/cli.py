@@ -197,8 +197,8 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    """Main entry point for CLI."""
+def run_cli() -> None:
+    """Main entry point for CLI (expects command in argv)."""
     parser = create_parser()
     args = parser.parse_args()
 

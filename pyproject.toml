@@ -1,14 +1,14 @@
 [project]
 name = "paperbot"
 version = "1.0.0"
-description = "Journal RSS → Crossref → SQLite → Zotero pipeline"
+description = "Journal RSS → Crossref → SQLite → md DB pipeline"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
     { name = "PaperBot Contributors" }
 ]
-keywords = ["rss", "zotero", "crossref", "papers", "academic", "research"]
+keywords = ["rss", "crossref", "papers", "academic", "research"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -28,6 +28,8 @@ dependencies = [
     "PyYAML>=6.0",
     "python-dotenv>=1.0.0",
     "rich>=13.0.0",
+    "streamlit>=1.30.0",
+    "pandas>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -39,7 +41,7 @@ dev = [
 ]
 
 [project.scripts]
-paperbot = "paperbot.cli:main"
+paperbot = "paperbot.__main__:run"
 
 [project.urls]
 Homepage = "https://github.com/wonjuncio/paperbot"

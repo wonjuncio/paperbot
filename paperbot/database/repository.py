@@ -49,7 +49,6 @@ class PaperRepository:
                     abstract TEXT,
                     status TEXT NOT NULL DEFAULT 'new',
                     is_picked INTEGER NOT NULL DEFAULT 0,
-                    zotero_key TEXT,
                     UNIQUE(doi),
                     UNIQUE(link)
                 );
@@ -150,7 +149,7 @@ class PaperRepository:
             if status == "picked":
                 cursor.execute(
                     f"""
-                    SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, zotero_key, created_at
+                    SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, created_at
                     FROM papers
                     WHERE {where_clause}
                     ORDER BY {order}
@@ -161,7 +160,7 @@ class PaperRepository:
             else:
                 cursor.execute(
                     f"""
-                    SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, zotero_key, created_at
+                    SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, created_at
                     FROM papers
                     WHERE {where_clause}
                     ORDER BY {order}
@@ -184,7 +183,7 @@ class PaperRepository:
                 abstract=row["abstract"],
                 id=row["id"],
                 status=row["status"],
-                zotero_key=row["zotero_key"],
+                is_picked=row["is_picked"],
             )
             papers.append(paper)
 
@@ -203,7 +202,7 @@ class PaperRepository:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, zotero_key, created_at
+                SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, created_at
                 FROM papers
                 WHERE is_picked = 1
                 ORDER BY COALESCE(published, created_at) DESC
@@ -226,10 +225,82 @@ class PaperRepository:
                 abstract=row["abstract"],
                 id=row["id"],
                 status=row["status"],
-                zotero_key=row["zotero_key"],
+                is_picked=row["is_picked"],
             )
             papers.append(paper)
 
+        return papers
+
+    def get_status_counts(self) -> dict[str, int]:
+        """Return counts per status (new, archived, read) and picked count.
+
+        Returns:
+            Dict with keys 'new', 'archived', 'read', 'picked' and counts.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT status, COUNT(*) AS cnt FROM papers GROUP BY status
+                """
+            )
+            by_status = {row["status"]: row["cnt"] for row in cursor.fetchall()}
+            cursor.execute(
+                "SELECT COUNT(*) AS cnt FROM papers WHERE is_picked = 1"
+            )
+            picked = cursor.fetchone()["cnt"]
+        return {
+            "new": by_status.get("new", 0),
+            "archived": by_status.get("archived", 0),
+            "read": by_status.get("read", 0),
+            "picked": picked,
+        }
+
+    def find_all(self, limit: int = 500, sort_by: str = "id") -> list[Paper]:
+        """Find papers from all statuses (for archive view).
+
+        Args:
+            limit: Maximum number of papers to return
+            sort_by: 'id', 'date', or 'title'
+
+        Returns:
+            List of Paper objects
+        """
+        order_clauses = {
+            "id": "id DESC",
+            "date": "COALESCE(published, created_at) DESC",
+            "title": "title ASC",
+        }
+        order = order_clauses.get(sort_by, "id DESC")
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, created_at
+                FROM papers
+                ORDER BY {order}
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            rows = cursor.fetchall()
+
+        papers = []
+        for row in rows:
+            paper = Paper(
+                source=row["source"],
+                title=row["title"],
+                link=row["link"],
+                doi=row["doi"],
+                published=row["published"],
+                authors=row["authors"],
+                journal=row["journal"],
+                abstract=row["abstract"],
+                id=row["id"],
+                status=row["status"],
+                is_picked=row["is_picked"],
+            )
+            papers.append(paper)
         return papers
 
     def pick(self, ids: list[int]) -> int:

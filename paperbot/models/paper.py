@@ -21,4 +21,4 @@ class Paper:
     # Database fields (set after persistence)
     id: Optional[int] = None
     status: Literal["new", "archived", "read"] = "new"
-    zotero_key: Optional[str] = None
+    is_picked: int = 0

@@ -1,7 +1,7 @@
-"""PaperBot - Journal RSS to Zotero pipeline.
+"""PaperBot - Journal RSS to md DB pipeline.
 
 A tool for collecting academic papers from RSS feeds,
-enriching metadata via Crossref, and pushing to Zotero.
+enriching metadata via Crossref, and pushing to md DB.
 """
 
 __version__ = "1.0.0"
