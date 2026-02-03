@@ -45,6 +45,16 @@ class ConsoleUI:
         """Print picked confirmation."""
         self._console.print(f"[green]Picked[/green]: {ids}")
 
+    def unpicked(self, ids: list[int]) -> None:
+        """Print unpicked confirmation."""
+        self._console.print(f"[green]Unpicked[/green]: {ids}")
+
+    def no_papers_to_unpick(self, ids: list[int]) -> None:
+        """Print message when none of the given IDs are in picked status."""
+        self._console.print(
+            f"[yellow]None of the given IDs are in picked status:[/yellow] {ids}"
+        )
+
     def pushed_zotero(self, count: int) -> None:
         """Print Zotero push summary."""
         self._console.print(f"[green]Pushed to Zotero[/green]: {count} items")

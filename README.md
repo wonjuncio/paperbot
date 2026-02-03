@@ -75,6 +75,9 @@ uv run paperbot list
 # 논문 선택
 uv run paperbot pick 1 2 3
 
+# 선택 취소 (picked 상태인 논문만 new로 되돌림)
+uv run paperbot unpick 2 3 4
+
 # Zotero에 업로드
 uv run paperbot push-zotero
 ```
@@ -112,6 +115,13 @@ uv run paperbot list --limit 20
 uv run paperbot pick 1 2 3
 ```
 
+### `unpick`
+선택을 취소 (해당 ID를 `new` 상태로 되돌림). **현재 `picked` 상태인 논문만** 취소됨. 지정한 ID 중 picked가 하나도 없으면 "None of the given IDs are in picked status" 알림이 뜸.
+
+```bash
+uv run paperbot unpick 2 3 4
+```
+
 ### `push-zotero`
 선택된(picked) 논문을 Zotero 라이브러리에 업로드.
 
@@ -127,7 +137,11 @@ uv run paperbot push-zotero
 4. `push-zotero` → Zotero에 추가
 
 # TODO
-- Zotero Test
-- `pick` Test
+- Zotero Test (O, pdf 받기 기능 X)
+- `pick` Test (O)
+- `unpick` 제작 (O)
 - UI 제작
 - list 조건 넣기 / n days 마다 받아오기
+
+# 기여
+오류 발견이나 기능 제안이 있으면 이메일로 알려주시거나 [Pull Request](https://github.com/wonjuncio/paperbot/pulls)를 보내주세요.

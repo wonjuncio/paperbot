@@ -71,6 +71,21 @@ class PaperBotCLI:
         self.repo.update_status(ids, "picked")
         self.ui.picked(ids)
 
+    def cmd_unpick(self, ids: list[int]) -> None:
+        """Unmark papers (set status back to new).
+
+        Only papers that are currently 'picked' are changed. If none are picked,
+        shows a message instead of silently doing nothing.
+
+        Args:
+            ids: Paper IDs to unmark
+        """
+        unpicked_ids = self.repo.unpick(ids)
+        if unpicked_ids:
+            self.ui.unpicked(unpicked_ids)
+        else:
+            self.ui.no_papers_to_unpick(ids)
+
     def cmd_push_zotero(self, limit: int = 30) -> None:
         """Push picked papers to Zotero.
 
@@ -143,6 +158,15 @@ def create_parser() -> argparse.ArgumentParser:
         help="Paper IDs to mark as picked",
     )
 
+    # unpick command
+    unpick_parser = subparsers.add_parser("unpick", help="Unmark paper IDs (set back to new)")
+    unpick_parser.add_argument(
+        "ids",
+        nargs="+",
+        type=int,
+        help="Paper IDs to unmark",
+    )
+
     # push-zotero command
     push_parser = subparsers.add_parser(
         "push-zotero",
@@ -171,5 +195,7 @@ def main() -> None:
         cli.cmd_list(args.status, args.limit, args.sort_by)
     elif args.command == "pick":
         cli.cmd_pick(args.ids)
+    elif args.command == "unpick":
+        cli.cmd_unpick(args.ids)
     elif args.command == "push-zotero":
         cli.cmd_push_zotero(args.limit)

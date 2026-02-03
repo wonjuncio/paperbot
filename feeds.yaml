@@ -1,12 +1,32 @@
 feeds:
   - name: "npj Computational Materials - Latest Articles"
-    url: "https://www.nature.com/npjcompumats.rss"
+    url: "https://www.nature.com/npjcompumats/rss"
     issn: "2057-3960"
 
-  - name: "Physical Review Materials - Latest Articles"
-    url: "https://journals.aps.org/prmaterials/rss/10.1103/PhysRevMaterials"
-    issn: "2475-9953"
+  - name: "Nature Computational Science - Latest Articles"
+    url: "https://www.nature.com/natcomputsci/rss"
+    issn: "2662-8457"
+
+  - name: "Machine Learning: Science and Technology - Latest Articles"
+    url: "https://iopscience.iop.org/journal/2632-2153/feeds/rss"
+    issn: "2632-2153"
+
+  - name: "Physical Review B - Latest Articles"
+    url: "https://feeds.aps.org/rss/recent/prb.xml"
+    issn: "2469-9950"
 
   - name: "Computational Materials Science - Latest Articles"
     url: "https://rss.sciencedirect.com/publication/science/09270256"
     issn: "0927-0256"
+
+  - name: "Journal of Chemical Physics - Latest Articles"
+    url: "https://rss.scitation.org/jcp"
+    issn: "0021-9606"
+
+  - name: "Advanced Materials - Latest Articles"
+    url: "https://onlinelibrary.wiley.com/feed/15214095/most-recent"
+    issn: "0935-9648"
+
+  - name: "Advanced Functional Materials - Latest Articles"
+    url: "https://onlinelibrary.wiley.com/feed/1616301x/most-recent"
+    issn: "1616-301X"
