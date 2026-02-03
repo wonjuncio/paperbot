@@ -1,6 +1,6 @@
 # PaperBot
 
-학술 저널 RSS 피드에서 논문을 수집하고, Crossref로 메타데이터를 보강한 뒤, Zotero에 자동으로 추가하는 도구
+학술 저널 RSS 피드에서 논문을 수집하고, Crossref로 메타데이터를 보강한 뒤, Markdown 파일로 내보내는 도구.
 
 ## 설치 (uv 사용)
 
@@ -26,15 +26,13 @@ uv sync --extra dev
 cp .env.example .env
 ```
 
-2. `.env` 편집:
+2. `.env` 편집 (선택사항):
 
 ```
 CONTACT_EMAIL=you@example.com
-ZOTERO_API_KEY=your_api_key
-ZOTERO_LIBRARY_ID=your_library_id
-ZOTERO_LIBRARY_TYPE=user
-ZOTERO_COLLECTION_KEY=optional_collection_key
 ```
+
+이메일은 Crossref API의 "polite pool" 사용을 위해 권장됩니다.
 
 3. `feeds.yaml` 편집하여 수집할 저널 RSS 추가
 
@@ -78,8 +76,8 @@ uv run paperbot pick 1 2 3
 # 선택 취소 (picked 상태인 논문만 new로 되돌림)
 uv run paperbot unpick 2 3 4
 
-# Zotero에 업로드
-uv run paperbot push-zotero
+# Markdown으로 내보내기 (picked 상태 → read 상태로 변경)
+uv run paperbot export
 ```
 
 ## 명령어
@@ -101,15 +99,18 @@ uv run paperbot list
 # 선택된 논문 보기
 uv run paperbot list --status picked
 
-# 업로드 완료된 논문 보기
-uv run paperbot list --status pushed
+# 내보내기 완료된 논문 보기
+uv run paperbot list --status read
 
 # 표시 개수 제한
 uv run paperbot list --limit 20
+
+# 정렬 옵션 (id, date, title)
+uv run paperbot list --sort date
 ```
 
 ### `pick`
-관심있는 논문을 선택 (ID로 지정). 선택된 논문만 Zotero에 업로드됨.
+관심있는 논문을 선택 (ID로 지정). 선택된 논문만 export됨.
 
 ```bash
 uv run paperbot pick 1 2 3
@@ -122,11 +123,27 @@ uv run paperbot pick 1 2 3
 uv run paperbot unpick 2 3 4
 ```
 
-### `push-zotero`
-선택된(picked) 논문을 Zotero 라이브러리에 업로드.
+### `export`
+선택된(picked) 논문을 Markdown 파일로 내보냄. `exports/` 폴더에 오늘 날짜 이름(예: `2026-02-03.md`)으로 저장되며, 같은 날 여러번 실행하면 덮어씌워짐. Export 후 논문 상태는 `read`로 변경됨.
 
 ```bash
-uv run paperbot push-zotero
+uv run paperbot export
+```
+
+**출력 예시** (`exports/2026-02-03.md`):
+
+```markdown
+## 2026-02-03
+
+### Machine-learning interatomic potentials for atomistic simulations
+- Journal: npj Computational Materials (2024)
+- DOI: 10.1038/s41524-024-01234-5
+- Link: https://doi.org/10.1038/s41524-024-01234-5
+
+### Active learning for robust ML interatomic potentials
+- Journal: Physical Review Materials (2025)
+- DOI: 10.1103/PhysRevMaterials.9.013801
+- Link: https://doi.org/10.1103/PhysRevMaterials.9.013801
 ```
 
 ## 워크플로우
@@ -134,14 +151,34 @@ uv run paperbot push-zotero
 1. `fetch` → 피드에서 논문 수집
 2. `list` → 새 논문 확인
 3. `pick` → 관심 논문 선택
-4. `push-zotero` → Zotero에 추가
+4. `export` → Markdown 파일로 내보내기
 
-# TODO
-- Zotero Test (O, pdf 받기 기능 X)
-- `pick` Test (O)
-- `unpick` 제작 (O)
-- UI 제작
-- list 조건 넣기 / n days 마다 받아오기
+## 파일 구조
 
-# 기여
+```
+paperbot/
+├── papers.db           # SQLite 데이터베이스 (자동 생성)
+├── exports/            # 내보낸 Markdown 파일 (자동 생성)
+│   ├── 2026-02-01.md
+│   ├── 2026-02-02.md
+│   └── 2026-02-03.md
+├── feeds.yaml          # RSS 피드 설정
+└── .env                # 환경변수 (선택사항)
+```
+
+## 파일 구조
+
+```
+paperbot/
+├── papers.db           # SQLite 데이터베이스 (자동 생성)
+├── exports/            # 내보낸 Markdown 파일 (자동 생성)
+│   ├── 2026-02-01.md
+│   ├── 2026-02-02.md
+│   └── 2026-02-03.md
+├── feeds.yaml          # RSS 피드 설정
+└── .env                # 환경변수 (선택사항)
+```
+
+## 기여
+
 오류 발견이나 기능 제안이 있으면 이메일로 알려주시거나 [Pull Request](https://github.com/wonjuncio/paperbot/pulls)를 보내주세요.

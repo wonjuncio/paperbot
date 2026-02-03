@@ -1,7 +1,7 @@
 """Service layer."""
 
 from paperbot.services.crossref_service import CrossrefService
+from paperbot.services.export_service import MarkdownExporter
 from paperbot.services.feed_service import FeedService
-from paperbot.services.zotero_service import ZoteroService
 
-__all__ = ["CrossrefService", "FeedService", "ZoteroService"]
+__all__ = ["CrossrefService", "FeedService", "MarkdownExporter"]

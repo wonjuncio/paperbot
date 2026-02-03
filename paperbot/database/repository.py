@@ -146,8 +146,8 @@ class PaperRepository:
 
         return papers
 
-    def find_picked_without_zotero(self, limit: int = 30) -> list[Paper]:
-        """Find picked papers that haven't been pushed to Zotero.
+    def find_picked(self, limit: int = 100) -> list[Paper]:
+        """Find picked papers for export.
 
         Args:
             limit: Maximum number of papers to return
@@ -161,7 +161,7 @@ class PaperRepository:
                 """
                 SELECT id, source, title, link, doi, published, authors, journal, abstract, status, zotero_key
                 FROM papers
-                WHERE status = 'picked' AND (zotero_key IS NULL OR zotero_key = '')
+                WHERE status = 'picked'
                 ORDER BY COALESCE(published, created_at) DESC
                 LIMIT ?
                 """,
@@ -211,17 +211,52 @@ class PaperRepository:
             conn.commit()
             return cursor.rowcount
 
-    def mark_pushed(self, paper_id: int, zotero_key: str) -> None:
-        """Mark a paper as pushed to Zotero.
+    def unpick(self, ids: list[int]) -> list[int]:
+        """Set status to 'new' only for papers that are currently 'picked'.
 
         Args:
-            paper_id: Paper ID to update
-            zotero_key: Zotero item key
+            ids: Paper IDs to unmark
+
+        Returns:
+            List of IDs that were actually in picked status and were unpicked
         """
+        if not ids:
+            return []
+
+        placeholders = ",".join(["?"] * len(ids))
         with self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE papers SET status = 'pushed', zotero_key = ? WHERE id = ?",
-                (zotero_key, paper_id),
+                f"SELECT id FROM papers WHERE id IN ({placeholders}) AND status = 'picked'",
+                ids,
+            )
+            picked_ids = [row["id"] for row in cursor.fetchall()]
+
+            if not picked_ids:
+                return []
+
+            ph = ",".join(["?"] * len(picked_ids))
+            cursor.execute(
+                f"UPDATE papers SET status = 'new' WHERE id IN ({ph})",
+                picked_ids,
+            )
+            conn.commit()
+            return picked_ids
+
+    def mark_exported(self, paper_ids: list[int]) -> None:
+        """Mark papers as exported (status = 'read').
+
+        Args:
+            paper_ids: List of paper IDs to mark as read
+        """
+        if not paper_ids:
+            return
+
+        placeholders = ",".join(["?"] * len(paper_ids))
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"UPDATE papers SET status = 'read' WHERE id IN ({placeholders})",
+                paper_ids,
             )
             conn.commit()

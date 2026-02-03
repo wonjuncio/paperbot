@@ -1,7 +1,7 @@
 """Paper data model."""
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 
 @dataclass
@@ -20,5 +20,5 @@ class Paper:
 
     # Database fields (set after persistence)
     id: Optional[int] = None
-    status: str = "new"
+    status: Literal["new", "archived", "read"] = "new"
     zotero_key: Optional[str] = None

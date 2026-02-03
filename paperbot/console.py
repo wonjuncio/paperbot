@@ -15,6 +15,11 @@ class ConsoleUI:
         """Initialize console."""
         self._console = Console()
 
+    @property
+    def console(self) -> Console:
+        """Underlying Rich Console (for Progress etc.)."""
+        return self._console
+
     def info(self, message: str) -> None:
         """Print an info message."""
         self._console.print(message)
@@ -55,9 +60,15 @@ class ConsoleUI:
             f"[yellow]None of the given IDs are in picked status:[/yellow] {ids}"
         )
 
-    def pushed_zotero(self, count: int) -> None:
-        """Print Zotero push summary."""
-        self._console.print(f"[green]Pushed to Zotero[/green]: {count} items")
+    def no_papers_to_export(self) -> None:
+        """Print message when there are no picked papers to export."""
+        self._console.print("[yellow]No picked papers to export.[/yellow]")
+
+    def exported(self, count: int, filepath) -> None:
+        """Print export completion summary."""
+        self._console.print(
+            f"[green]Exported {count} papers to:[/green] {filepath}"
+        )
 
     def display_papers(
         self,

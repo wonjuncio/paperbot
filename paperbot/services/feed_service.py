@@ -1,6 +1,8 @@
 """RSS feed parsing service."""
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -12,6 +14,19 @@ from paperbot.services.crossref_service import CrossrefService
 from paperbot.utils.text import clean_title, extract_doi, parse_published
 
 
+@dataclass
+class RawEntry:
+    """RSS-only entry before Crossref enrichment."""
+
+    source: str
+    title: str
+    link: str
+    doi: Optional[str]
+    published: Optional[str]
+    issn_hint: Optional[str]
+    entry: dict[str, Any]
+
+
 class FeedService:
     """Service for fetching and parsing RSS feeds."""
 
@@ -19,7 +34,7 @@ class FeedService:
         self,
         feeds_path: Path,
         crossref: CrossrefService,
-        polite_delay: float = 0.2,
+        polite_delay: float = 0.1,
     ):
         """Initialize feed service.
 
@@ -32,23 +47,108 @@ class FeedService:
         self.crossref = crossref
         self.polite_delay = polite_delay
 
-    def fetch_all(self, max_entries_per_feed: int = 200) -> Iterator[Paper]:
-        """Fetch papers from all configured feeds.
-
-        Args:
-            max_entries_per_feed: Maximum entries to process per feed
-
-        Yields:
-            Paper objects with enriched metadata
-        """
+    def collect_raw_entries(
+        self, max_entries_per_feed: int = 200
+    ) -> list[RawEntry]:
+        """Parse all RSS feeds and return raw entries (no Crossref). Fast."""
         feeds = load_feeds(self.feeds_path)
+        raw_entries: list[RawEntry] = []
 
         for feed_config in feeds:
             name = feed_config["name"]
             url = feed_config["url"]
             issn_hint = feed_config.get("issn")
+            parsed = feedparser.parse(url)
+            for entry in parsed.entries[:max_entries_per_feed]:
+                raw = self._entry_to_raw(entry, name, issn_hint)
+                if raw:
+                    raw_entries.append(raw)
+        return raw_entries
 
-            yield from self._process_feed(name, url, issn_hint, max_entries_per_feed)
+    def _entry_to_raw(
+        self,
+        entry: dict[str, Any],
+        source: str,
+        issn_hint: Optional[str],
+    ) -> Optional[RawEntry]:
+        """Convert RSS entry to RawEntry (no API calls)."""
+        title_raw = entry.get("title", "").strip() or "(no title)"
+        title = clean_title(title_raw)
+        link = entry.get("link", "").strip() or ""
+        doi = extract_doi(entry)
+        published = parse_published(entry)
+        return RawEntry(
+            source=source,
+            title=title,
+            link=link,
+            doi=doi,
+            published=published,
+            issn_hint=issn_hint,
+            entry=dict(entry),
+        )
+
+    def enrich_entry(self, raw: RawEntry) -> Paper:
+        """Enrich a single raw entry with Crossref (search + lookup)."""
+        authors = None
+        journal = None
+        abstract = None
+        published = raw.published
+        doi = raw.doi
+        raw_dict: dict[str, Any] = {"feed": raw.source, "entry": raw.entry}
+
+        if not doi:
+            doi = self._search_doi(
+                raw.title, raw.source, raw.published, raw.issn_hint, raw_dict
+            )
+        if doi:
+            authors, journal, published_cr, abstract = self._enrich_metadata(
+                doi, raw_dict
+            )
+            published = published_cr or published
+
+        return Paper(
+            source=raw.source,
+            title=raw.title,
+            link=raw.link,
+            doi=doi,
+            published=published,
+            authors=authors,
+            journal=journal,
+            abstract=abstract,
+            raw=raw_dict,
+        )
+
+    def fetch_all(
+        self,
+        max_entries_per_feed: int = 200,
+        max_workers: int = 8,
+    ) -> Iterator[Paper]:
+        """Fetch papers from all feeds with parallel Crossref enrichment.
+
+        RSS is parsed first (fast), then Crossref calls run in parallel.
+
+        Args:
+            max_entries_per_feed: Maximum entries per feed
+            max_workers: Number of parallel workers for Crossref (default 8)
+
+        Yields:
+            Paper objects with enriched metadata
+        """
+        raw_entries = self.collect_raw_entries(max_entries_per_feed)
+        if not raw_entries:
+            return
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self.enrich_entry, raw): raw
+                for raw in raw_entries
+            }
+            for future in as_completed(futures):
+                try:
+                    paper = future.result()
+                    yield paper
+                except Exception:
+                    pass  # skip failed entries
 
     def _process_feed(
         self,
@@ -57,71 +157,12 @@ class FeedService:
         issn_hint: Optional[str],
         max_entries: int,
     ) -> Iterator[Paper]:
-        """Process a single RSS feed.
-
-        Args:
-            name: Feed name for logging/source
-            url: Feed URL
-            issn_hint: Optional ISSN for Crossref filtering
-            max_entries: Maximum entries to process
-
-        Yields:
-            Paper objects
-        """
+        """Process a single RSS feed (legacy sequential path)."""
         parsed = feedparser.parse(url)
-
         for entry in parsed.entries[:max_entries]:
-            paper = self._parse_entry(entry, name, issn_hint)
-            if paper:
-                yield paper
-
-    def _parse_entry(
-        self,
-        entry: dict[str, Any],
-        source: str,
-        issn_hint: Optional[str],
-    ) -> Optional[Paper]:
-        """Parse a single RSS entry into a Paper.
-
-        Args:
-            entry: Parsed feed entry
-            source: Source feed name
-            issn_hint: Optional ISSN for Crossref filtering
-
-        Returns:
-            Paper object or None if parsing fails
-        """
-        title_raw = entry.get("title", "").strip() or "(no title)"
-        title = clean_title(title_raw)
-        link = entry.get("link", "").strip() or ""
-        doi = extract_doi(entry)
-        published = parse_published(entry)
-
-        authors = None
-        journal = None
-        abstract = None
-        raw: dict[str, Any] = {"feed": source, "entry": dict(entry)}
-
-        # If no DOI in RSS, search Crossref by title
-        if not doi:
-            doi = self._search_doi(title, source, published, issn_hint, raw)
-
-        # Enrich metadata via Crossref lookup
-        if doi:
-            authors, journal, published_cr, abstract = self._enrich_metadata(doi, raw)
-            published = published_cr or published
-
-        return Paper(
-            source=source,
-            title=title,
-            link=link,
-            doi=doi,
-            published=published,
-            authors=authors,
-            journal=journal,
-            abstract=abstract,
-            raw=raw,
-        )
+            raw = self._entry_to_raw(entry, name, issn_hint)
+            if raw:
+                yield self.enrich_entry(raw)
 
     def _search_doi(
         self,

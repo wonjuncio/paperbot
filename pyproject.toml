@@ -27,7 +27,6 @@ dependencies = [
     "python-dateutil>=2.8.0",
     "PyYAML>=6.0",
     "python-dotenv>=1.0.0",
-    "pyzotero>=1.5.0",
     "rich>=13.0.0",
 ]
 

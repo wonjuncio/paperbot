@@ -14,12 +14,9 @@ class Settings:
     """Application settings loaded from environment and config files."""
 
     contact_email: Optional[str]
-    zotero_api_key: Optional[str]
-    zotero_library_type: str
-    zotero_library_id: Optional[str]
-    zotero_collection_key: Optional[str]
     db_path: Path
     feeds_path: Path
+    export_dir: Path
 
     @classmethod
     def load(cls, base_dir: Optional[Path] = None) -> "Settings":
@@ -31,12 +28,9 @@ class Settings:
 
         return cls(
             contact_email=os.getenv("CONTACT_EMAIL"),
-            zotero_api_key=os.getenv("ZOTERO_API_KEY"),
-            zotero_library_type=os.getenv("ZOTERO_LIBRARY_TYPE", "user"),
-            zotero_library_id=os.getenv("ZOTERO_LIBRARY_ID"),
-            zotero_collection_key=os.getenv("ZOTERO_COLLECTION_KEY") or None,
             db_path=base_dir / "papers.db",
             feeds_path=base_dir / "feeds.yaml",
+            export_dir=base_dir / "exports",
         )
 
 

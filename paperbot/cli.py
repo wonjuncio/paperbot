@@ -3,12 +3,14 @@
 import argparse
 from typing import Optional
 
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
 from paperbot.config import Settings, load_feeds
 from paperbot.console import ConsoleUI
 from paperbot.database.repository import PaperRepository
 from paperbot.services.crossref_service import CrossrefService
+from paperbot.services.export_service import MarkdownExporter
 from paperbot.services.feed_service import FeedService
-from paperbot.services.zotero_service import create_zotero_service
 
 
 class PaperBotCLI:
@@ -24,8 +26,8 @@ class PaperBotCLI:
         self.ui = ConsoleUI()
         self.repo = PaperRepository(self.settings.db_path)
 
-    def cmd_fetch(self) -> None:
-        """Fetch papers from all configured feeds."""
+    def cmd_fetch(self, workers: int = 8) -> None:
+        """Fetch papers from all configured feeds (Crossref calls run in parallel)."""
         crossref = CrossrefService(self.settings.contact_email)
         feed_service = FeedService(
             feeds_path=self.settings.feeds_path,
@@ -34,15 +36,27 @@ class PaperBotCLI:
 
         feeds = load_feeds(self.settings.feeds_path)
         total_new = 0
+        total_processed = 0
 
         for feed_config in feeds:
             name = feed_config["name"]
             self.ui.fetching(name)
 
-        # Process all papers
-        for paper in feed_service.fetch_all():
-            if self.repo.upsert(paper):
-                total_new += 1
+        # Process all papers with progress (parallel Crossref enrichment)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            console=self.ui.console,
+        ) as progress:
+            task = progress.add_task("Fetching papers...", total=None)
+            for paper in feed_service.fetch_all(max_workers=workers):
+                if self.repo.upsert(paper):
+                    total_new += 1
+                total_processed += 1
+                progress.update(
+                    task,
+                    description=f"Processed {total_processed} papers, {total_new} new",
+                )
 
         self.ui.fetch_complete(total_new)
 
@@ -86,29 +100,22 @@ class PaperBotCLI:
         else:
             self.ui.no_papers_to_unpick(ids)
 
-    def cmd_push_zotero(self, limit: int = 30) -> None:
-        """Push picked papers to Zotero.
+    def cmd_export(self) -> None:
+        """Export picked papers to markdown file."""
+        papers = self.repo.find_picked()
+        
+        if not papers:
+            self.ui.no_papers_to_export()
+            return
 
-        Args:
-            limit: Maximum papers to push
-        """
-        zotero = create_zotero_service(
-            api_key=self.settings.zotero_api_key,
-            library_id=self.settings.zotero_library_id,
-            library_type=self.settings.zotero_library_type,
-            collection_key=self.settings.zotero_collection_key,
-        )
-
-        papers = self.repo.find_picked_without_zotero(limit)
-        pushed = 0
-
-        for paper in papers:
-            key = zotero.push_paper(paper)
-            if paper.id is not None:
-                self.repo.mark_pushed(paper.id, key or "")
-            pushed += 1
-
-        self.ui.pushed_zotero(pushed)
+        exporter = MarkdownExporter(self.settings.export_dir)
+        filepath = exporter.export(papers)
+        
+        # Mark papers as read
+        paper_ids = [p.id for p in papers if p.id is not None]
+        self.repo.mark_exported(paper_ids)
+        
+        self.ui.exported(len(papers), filepath)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -119,20 +126,26 @@ def create_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="paperbot",
-        description="Journal RSS → Crossref → SQLite → Zotero",
+        description="Journal RSS → Crossref → SQLite → Markdown",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # fetch command
-    subparsers.add_parser("fetch", help="Fetch feeds and store new papers")
+    fetch_parser = subparsers.add_parser("fetch", help="Fetch feeds and store new papers")
+    fetch_parser.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        help="Parallel workers for Crossref API (default: 8)",
+    )
 
     # list command
     list_parser = subparsers.add_parser("list", help="List papers by status")
     list_parser.add_argument(
         "--status",
         default="new",
-        choices=["new", "picked", "pushed"],
+        choices=["new", "picked", "read"],
         help="Filter by status (default: new)",
     )
     list_parser.add_argument(
@@ -167,17 +180,8 @@ def create_parser() -> argparse.ArgumentParser:
         help="Paper IDs to unmark",
     )
 
-    # push-zotero command
-    push_parser = subparsers.add_parser(
-        "push-zotero",
-        help="Push picked papers to Zotero",
-    )
-    push_parser.add_argument(
-        "--limit",
-        type=int,
-        default=30,
-        help="Maximum papers to push (default: 30)",
-    )
+    # export command
+    subparsers.add_parser("export", help="Export picked papers to markdown")
 
     return parser
 
@@ -190,12 +194,12 @@ def main() -> None:
     cli = PaperBotCLI()
 
     if args.command == "fetch":
-        cli.cmd_fetch()
+        cli.cmd_fetch(workers=args.workers)
     elif args.command == "list":
         cli.cmd_list(args.status, args.limit, args.sort_by)
     elif args.command == "pick":
         cli.cmd_pick(args.ids)
     elif args.command == "unpick":
         cli.cmd_unpick(args.ids)
-    elif args.command == "push-zotero":
-        cli.cmd_push_zotero(args.limit)
+    elif args.command == "export":
+        cli.cmd_export()
