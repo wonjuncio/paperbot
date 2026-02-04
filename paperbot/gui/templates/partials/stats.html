@@ -1,19 +1,19 @@
-<div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">통계</div>
+<div class="section-header mb-3">통계</div>
 <div class="grid grid-cols-2 gap-3">
-    <div class="stat-card bg-blue-50 rounded-lg p-3 text-center">
-        <div class="text-2xl font-bold text-blue-600">{{ stats.new }}</div>
-        <div class="text-xs text-blue-500 font-medium">NEW</div>
+    <div class="stat-card-blue">
+        <div class="text-2xl font-bold text-accent-primary">{{ stats.new }}</div>
+        <div class="text-xs text-accent-primary font-medium opacity-80">NEW</div>
     </div>
-    <div class="stat-card bg-amber-50 rounded-lg p-3 text-center">
-        <div class="text-2xl font-bold text-amber-600">{{ stats.picked }}</div>
-        <div class="text-xs text-amber-500 font-medium">PICKED</div>
+    <div class="stat-card-amber">
+        <div class="text-2xl font-bold text-accent-warning">{{ stats.picked }}</div>
+        <div class="text-xs text-accent-warning font-medium opacity-80">PICKED</div>
     </div>
-    <div class="stat-card bg-slate-50 rounded-lg p-3 text-center">
-        <div class="text-2xl font-bold text-slate-600">{{ stats.archived }}</div>
-        <div class="text-xs text-slate-500 font-medium">ARCHIVED</div>
+    <div class="stat-card-muted">
+        <div class="text-2xl font-bold text-content-secondary">{{ stats.archived }}</div>
+        <div class="text-xs text-content-muted font-medium">ARCHIVED</div>
     </div>
-    <div class="stat-card bg-green-50 rounded-lg p-3 text-center">
-        <div class="text-2xl font-bold text-green-600">{{ stats.read }}</div>
-        <div class="text-xs text-green-500 font-medium">READ</div>
+    <div class="stat-card-green">
+        <div class="text-2xl font-bold text-accent-success">{{ stats.read }}</div>
+        <div class="text-xs text-accent-success font-medium opacity-80">READ</div>
     </div>
 </div>

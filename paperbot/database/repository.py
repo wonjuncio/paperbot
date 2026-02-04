@@ -281,6 +281,45 @@ class PaperRepository:
             )
             return [row["journal"] for row in cursor.fetchall()]
 
+    def find_by_id(self, paper_id: int) -> Optional[Paper]:
+        """Find a single paper by ID.
+
+        Args:
+            paper_id: Paper ID to find
+
+        Returns:
+            Paper object if found, None otherwise
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, created_at
+                FROM papers
+                WHERE id = ?
+                """,
+                (paper_id,),
+            )
+            row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return Paper(
+            source=row["source"],
+            title=row["title"],
+            link=row["link"],
+            doi=row["doi"],
+            published=row["published"],
+            authors=row["authors"],
+            journal=row["journal"],
+            abstract=row["abstract"],
+            id=row["id"],
+            status=row["status"],
+            is_picked=row["is_picked"],
+            created_at=row["created_at"],
+        )
+
     def find_all(self, limit: int = 500, sort_by: str = "id", journal: Optional[str] = None) -> list[Paper]:
         """Find papers from all statuses (for archive view).
 

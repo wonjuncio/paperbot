@@ -1,13 +1,13 @@
 {% if status.running %}
-<div class="px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm flex items-center gap-2"
+<div class="px-3 py-2 bg-accent-primary-subtle text-accent-primary rounded-lg text-sm flex items-center gap-2"
      hx-get="/actions/fetch-status" 
      hx-trigger="every 1s"
      hx-swap="outerHTML">
-    <span class="w-2 h-2 bg-blue-500 rounded-full pulse-dot"></span>
+    <span class="w-2 h-2 bg-accent-primary rounded-full pulse-dot"></span>
     <span>{{ status.message }}</span>
 </div>
 {% elif status.complete %}
-<div class="px-3 py-2 bg-green-50 text-green-700 rounded-lg text-sm">
+<div class="px-3 py-2 bg-accent-success-subtle text-accent-success rounded-lg text-sm">
     ✓ {{ status.message }}
 </div>
 {% endif %}

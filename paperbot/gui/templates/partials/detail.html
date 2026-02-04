@@ -1,19 +1,20 @@
-<div class="p-6">
+<div class="p-6" data-paper-id="{{ paper.id }}">
     <!-- Header -->
     <div class="mb-6">
         <div class="flex items-start justify-between gap-4 mb-4">
-            <h1 class="text-xl font-bold text-slate-800 leading-relaxed">
+            <h1 class="text-xl font-bold text-content-primary leading-relaxed">
                 {{ paper.title }}
             </h1>
             
-            <!-- Pick Button -->
+            <!-- Pick Button: context=detail so server returns button HTML, not checkbox -->
             <button hx-post="/actions/pick/{{ paper.id }}"
+                    hx-headers='{"X-Pick-Context": "detail"}'
                     hx-swap="outerHTML"
                     class="flex-shrink-0 px-4 py-2 rounded-lg font-semibold text-sm transition-all
                            {% if paper.is_picked %}
-                           bg-amber-100 text-amber-700 hover:bg-amber-200
+                           bg-accent-warning-subtle text-accent-warning hover:opacity-80
                            {% else %}
-                           bg-slate-100 text-slate-600 hover:bg-blue-100 hover:text-blue-600
+                           bg-accent-muted-subtle text-content-secondary hover:bg-accent-primary-subtle hover:text-accent-primary
                            {% endif %}">
                 {% if paper.is_picked %}
                 <span class="flex items-center gap-1.5">
@@ -36,13 +37,13 @@
         <!-- Meta Info -->
         <div class="flex flex-wrap items-center gap-3 text-sm">
             {% if paper.journal %}
-            <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-medium">
+            <span class="bg-accent-primary-subtle text-accent-primary px-3 py-1 rounded-full font-medium">
                 {{ paper.journal }}
             </span>
             {% endif %}
             
             {% if paper.published %}
-            <span class="text-slate-500 flex items-center gap-1">
+            <span class="text-content-muted flex items-center gap-1">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                 </svg>
@@ -50,10 +51,9 @@
             </span>
             {% endif %}
             
-            <span class="px-2 py-0.5 rounded text-xs font-bold uppercase
-                         {% if paper.status == 'new' %}bg-blue-100 text-blue-700
-                         {% elif paper.status == 'read' %}bg-green-100 text-green-700
-                         {% else %}bg-slate-100 text-slate-600{% endif %}">
+            <span class="{% if paper.status == 'new' %}badge-primary
+                         {% elif paper.status == 'read' %}badge-success
+                         {% else %}badge-muted{% endif %}">
                 {{ paper.status }}
             </span>
         </div>
@@ -62,21 +62,21 @@
     <!-- Authors -->
     {% if paper.authors %}
     <div class="mb-6">
-        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">저자</h2>
-        <p class="text-slate-700 text-sm leading-relaxed">{{ paper.authors }}</p>
+        <h2 class="section-header mb-2">저자</h2>
+        <p class="text-content-secondary text-sm leading-relaxed">{{ paper.authors }}</p>
     </div>
     {% endif %}
     
     <!-- DOI & Links -->
     {% if paper.doi or paper.link %}
     <div class="mb-6">
-        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">링크</h2>
+        <h2 class="section-header mb-2">링크</h2>
         <div class="flex flex-wrap gap-2">
             {% if paper.doi %}
             <a href="https://doi.org/{{ paper.doi }}" 
                target="_blank" 
                rel="noopener noreferrer"
-               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm transition-colors">
+               class="link-btn-muted">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                 </svg>
@@ -88,7 +88,7 @@
             <a href="{{ paper.link }}" 
                target="_blank" 
                rel="noopener noreferrer"
-               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-sm transition-colors">
+               class="link-btn-primary">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
                 </svg>
@@ -102,15 +102,15 @@
     <!-- Abstract -->
     {% if paper.abstract %}
     <div class="mb-6">
-        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">초록</h2>
-        <div class="bg-slate-50 rounded-lg p-4 border border-slate-100">
-            <p class="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{{ paper.abstract }}</p>
+        <h2 class="section-header mb-2">초록</h2>
+        <div class="bg-surface-overlay rounded-lg p-4 border border-border-subtle">
+            <p class="text-content-secondary text-sm leading-relaxed whitespace-pre-wrap">{{ paper.abstract }}</p>
         </div>
     </div>
     {% endif %}
     
     <!-- Source Info -->
-    <div class="pt-4 border-t text-xs text-slate-400">
+    <div class="pt-4 border-t border-border-base text-xs text-content-muted">
         <div class="flex items-center gap-4">
             <span>소스: {{ paper.source }}</span>
             {% if paper.created_at %}

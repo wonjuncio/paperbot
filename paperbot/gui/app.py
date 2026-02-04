@@ -155,11 +155,10 @@ async def papers_archive(
 @app.get("/papers/{paper_id}", response_class=HTMLResponse)
 async def paper_detail(request: Request, paper_id: int):
     """Get paper detail view (partial for HTMX)."""
-    papers = state.repo.find_all(limit=10000)
-    paper = next((p for p in papers if p.id == paper_id), None)
+    paper = state.repo.find_by_id(paper_id)
     
     if not paper:
-        return HTMLResponse("<div class='p-8 text-center text-slate-500'>논문을 찾을 수 없습니다.</div>")
+        return HTMLResponse("<div class='p-8 text-center text-content-muted'>논문을 찾을 수 없습니다.</div>")
     
     return templates.TemplateResponse(
         "partials/detail.html",
@@ -180,6 +179,14 @@ async def get_stats(request: Request):
         "partials/stats.html",
         {"request": request, "stats": stats},
     )
+
+
+@app.get("/stats/badges", response_class=HTMLResponse)
+async def get_badges(request: Request):
+    """Get badge counts as JSON for tab updates."""
+    from fastapi.responses import JSONResponse
+    stats = state.repo.get_status_counts()
+    return JSONResponse({"new": stats.get("new", 0), "picked": stats.get("picked", 0)})
 
 
 # ============================================================================
@@ -272,9 +279,10 @@ async def export_picked(request: Request):
 @app.post("/actions/pick/{paper_id}", response_class=HTMLResponse)
 async def pick_paper(request: Request, paper_id: int):
     """Toggle pick status for a paper."""
+    from fastapi.responses import Response
+    
     # Check current status
-    papers = state.repo.find_all(limit=10000)
-    paper = next((p for p in papers if p.id == paper_id), None)
+    paper = state.repo.find_by_id(paper_id)
     
     if paper:
         if paper.is_picked:
@@ -282,16 +290,55 @@ async def pick_paper(request: Request, paper_id: int):
         else:
             state.repo.pick([paper_id])
     
-    # Return updated checkbox
     new_picked = not paper.is_picked if paper else False
-    return HTMLResponse(
-        f"""<input type="checkbox" 
-            class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
+    
+    # Distinguish list (checkbox) vs detail panel (button) via custom header
+    pick_context = request.headers.get("X-Pick-Context", "")
+    from_detail = pick_context.strip().lower() == "detail"
+    
+    if from_detail:
+        # Return updated button for detail view (must include hx-headers so next click still sends context)
+        if new_picked:
+            html = f"""<button hx-post="/actions/pick/{paper_id}"
+                    hx-headers='{{"X-Pick-Context": "detail"}}'
+                    hx-swap="outerHTML"
+                    class="flex-shrink-0 px-4 py-2 rounded-lg font-semibold text-sm transition-all
+                           bg-accent-warning-subtle text-accent-warning hover:opacity-80">
+                <span class="flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                    </svg>
+                    Picked
+                </span>
+            </button>"""
+        else:
+            html = f"""<button hx-post="/actions/pick/{paper_id}"
+                    hx-headers='{{"X-Pick-Context": "detail"}}'
+                    hx-swap="outerHTML"
+                    class="flex-shrink-0 px-4 py-2 rounded-lg font-semibold text-sm transition-all
+                           bg-accent-muted-subtle text-content-secondary hover:bg-accent-primary-subtle hover:text-accent-primary">
+                <span class="flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                    </svg>
+                    Pick
+                </span>
+            </button>"""
+    else:
+        # Return updated checkbox for list view (keep hx-target so response never hits detail-view)
+        html = f"""<input type="checkbox" 
+            class="w-4 h-4 rounded border-border-base text-accent-primary focus:ring-accent-primary cursor-pointer" 
             hx-post="/actions/pick/{paper_id}"
+            hx-target="this"
             hx-swap="outerHTML"
             hx-trigger="click"
+            hx-headers='{{"X-Pick-Context": "list"}}'
             {"checked" if new_picked else ""}>"""
-    )
+    
+    # Return with HX-Trigger header to update stats
+    response = Response(content=html, media_type="text/html")
+    response.headers["HX-Trigger"] = "statsUpdated"
+    return response
 
 
 @app.post("/actions/pick-all", response_class=HTMLResponse)
