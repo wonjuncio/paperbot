@@ -404,3 +404,18 @@ class PaperRepository:
                 paper_ids,
             )
             conn.commit()
+
+    def reset_all_picked(self) -> int:
+        """Set is_picked=0 for all papers.
+
+        Intended to be called when the program or DB session closes,
+        so that picked state is not persisted across runs.
+
+        Returns:
+            Number of papers that were reset (had is_picked=1).
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE papers SET is_picked = 0 WHERE is_picked = 1")
+            conn.commit()
+            return cursor.rowcount

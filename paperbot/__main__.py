@@ -5,27 +5,28 @@ Usage:
     paperbot <command> ... / python -m paperbot <command> ... → CLI
 """
 
-import subprocess
+import atexit
 import sys
-from pathlib import Path
+import uvicorn
+
+
+def _reset_picked_on_exit() -> None:
+    """Reset all is_picked to 0 when the process exits."""
+    try:
+        from paperbot.config import Settings
+        from paperbot.database.repository import PaperRepository
+        settings = Settings.load()
+        repo = PaperRepository(settings.db_path)
+        repo.reset_all_picked()
+    except Exception:
+        pass  # avoid breaking process exit
 
 
 def run() -> None:
     """Entry point: no args → GUI (via streamlit run), else → CLI."""
+    atexit.register(_reset_picked_on_exit)
     if len(sys.argv) == 1:
-        gui_script = Path(__file__).resolve().parent / "gui.py"
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "streamlit",
-                "run",
-                str(gui_script),
-                "--server.headless",
-                "true",
-            ],
-            check=True,
-        )
+        uvicorn.run("paperbot.gui.app:app", host="127.0.0.1", port=8000, reload=True)
     else:
         from paperbot.cli import run_cli
         run_cli()
