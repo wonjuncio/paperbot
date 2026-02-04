@@ -15,6 +15,7 @@ from paperbot.models.paper import Paper
 from paperbot.services.crossref_service import CrossrefService
 from paperbot.services.export_service import MarkdownExporter
 from paperbot.services.feed_service import FeedService
+from paperbot.services.openalex_service import get_paper_info as openalex_get_paper_info
 
 
 # Global state for services
@@ -163,6 +164,40 @@ async def paper_detail(request: Request, paper_id: int):
     return templates.TemplateResponse(
         "partials/detail.html",
         {"request": request, "paper": paper},
+    )
+
+
+@app.get("/papers/{paper_id}/enrich", response_class=HTMLResponse)
+async def paper_detail_enrich(request: Request, paper_id: int):
+    """Fetch OpenAlex metadata by DOI and return HTML fragment. Called when detail card is shown."""
+    paper = state.repo.find_by_id(paper_id)
+    if not paper or not paper.doi:
+        return HTMLResponse(
+            "<div class='mb-6 text-sm text-content-muted'>DOI가 없어 OpenAlex 정보를 불러올 수 없습니다.</div>"
+        )
+
+    data = await openalex_get_paper_info(paper.doi)
+    if "error" in data:
+        return templates.TemplateResponse(
+            "partials/detail_enrich.html",
+            {
+                "request": request,
+                "error": data["error"],
+                "authors": [],
+                "journal": "",
+                "abstract": "",
+            },
+        )
+
+    return templates.TemplateResponse(
+        "partials/detail_enrich.html",
+        {
+            "request": request,
+            "error": None,
+            "authors": data.get("authors", []),
+            "journal": data.get("journal", ""),
+            "abstract": data.get("abstract", ""),
+        },
     )
 
 
