@@ -1,6 +1,7 @@
 """OpenAlex API client for enriching paper metadata (authors, journal, abstract)."""
 
 import httpx
+import html
 from typing import Any
 
 
@@ -59,6 +60,7 @@ async def get_paper_info(doi: str) -> dict[str, Any]:
                     word_counts[i] for i in sorted(word_counts.keys())
                 )
 
+            abstract = html.unescape(abstract)
             return {
                 "authors": authors,
                 "journal": journal,

@@ -1,5 +1,6 @@
 """FastAPI + HTMX GUI for PaperBot."""
 
+import html
 import os
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -49,6 +50,8 @@ async def lifespan(app: FastAPI):
 # Setup templates
 base_dir = os.path.dirname(__file__)
 templates = Jinja2Templates(directory=os.path.join(base_dir, "templates"))
+# 초록 등에 들어온 이스케이프된 HTML(&lt;, &gt;) 복원 후 렌더링용
+templates.env.filters["unescape_html"] = lambda s: html.unescape(s) if s else ""
 
 app = FastAPI(lifespan=lifespan)
 
@@ -153,6 +156,14 @@ async def papers_archive(
 # ============================================================================
 
 
+def _parse_authors(authors_str: Optional[str]) -> list[str]:
+    """Parse authors string into list (comma / semicolon / ' and ')."""
+    if not authors_str or not authors_str.strip():
+        return []
+    s = authors_str.replace(" and ", ", ").replace(";", ",")
+    return [a.strip() for a in s.split(",") if a.strip()]
+
+
 @app.get("/papers/{paper_id}", response_class=HTMLResponse)
 async def paper_detail(request: Request, paper_id: int):
     """Get paper detail view (partial for HTMX)."""
@@ -161,9 +172,10 @@ async def paper_detail(request: Request, paper_id: int):
     if not paper:
         return HTMLResponse("<div class='p-8 text-center text-content-muted'>논문을 찾을 수 없습니다.</div>")
     
+    authors_list = _parse_authors(paper.authors)
     return templates.TemplateResponse(
         "partials/detail.html",
-        {"request": request, "paper": paper},
+        {"request": request, "paper": paper, "authors_list": authors_list},
     )
 
 

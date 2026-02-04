@@ -173,8 +173,8 @@ class CrossrefService:
 
         # Abstract (may contain JATS XML)
         abstract = None
-        if isinstance(meta.get("abstract"), str):
-            # Strip JATS/XML tags
-            abstract = re.sub(r"<[^>]+>", "", meta["abstract"]).strip()
+        # if isinstance(meta.get("abstract"), str):
+        #   Strip JATS/XML tags
+        #   abstract = re.sub(r"<[^>]+>", "", meta["abstract"]).strip()
 
         return authors, journal, published, abstract
