@@ -1,5 +1,17 @@
 {% if papers %}
 {% for paper in papers %}
+{% if tab == 'read' %}
+{% set current_date = paper.created_at | date_key %}
+{% set prev_date = loop.previtem.created_at | date_key if loop.previtem else '' %}
+{% if current_date != prev_date %}
+<!-- Date separator for read log -->
+<div class="px-4 py-0.5 text-xs text-content-muted border-b border-border-subtle bg-surface-overlay flex items-center gap-2">
+    <span class="text-content-muted opacity-60">—</span>
+    <span>Read on {{ paper.created_at | format_read_date }}</span>
+    <span class="text-content-muted opacity-60">—</span>
+</div>
+{% endif %}
+{% endif %}
 <div class="paper-item group {% if paper.is_picked %}paper-item-picked{% endif %}"
      data-paper-id="{{ paper.id }}"
      hx-get="/papers/{{ paper.id }}" 

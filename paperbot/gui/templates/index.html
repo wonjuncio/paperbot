@@ -654,6 +654,15 @@
             listEl.classList.toggle('has-selection', paperId != null);
         }
         
+        function updateSortLabel() {
+            const label = document.getElementById('sort-label');
+            if (currentTab === 'read') {
+                label.textContent = sortOrder === 'desc' ? '▲추가일순' : '▼추가일순';
+            } else {
+                label.textContent = sortOrder === 'desc' ? '▲날짜순' : '▼날짜순';
+            }
+        }
+        
         function switchTab(tab) {
             currentTab = tab;
             
@@ -672,14 +681,16 @@
             // Update list title (count will be set after load)
             document.getElementById('list-title').textContent = titles[tab];
             
+            // Update sort label based on tab
+            updateSortLabel();
+            
             // Fetch papers
             loadPapers();
         }
         
         function toggleSortOrder() {
             sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
-            const label = document.getElementById('sort-label');
-            label.textContent = sortOrder === 'desc' ? '▲날짜순' : '▼날짜순';
+            updateSortLabel();
             // Set flag to scroll to selected card after list reloads
             shouldScrollToSelected = selectedPaperId != null;
             loadPapers();

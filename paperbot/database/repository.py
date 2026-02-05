@@ -140,6 +140,7 @@ class PaperRepository:
             "id": f"id {direction}",
             "date": f"COALESCE(published, created_at) {direction}",
             "title": f"title {direction}",
+            "created_at": f"created_at {direction}",
         }
         order_sql = order_clauses.get(sort_by, order_clauses["id"])
 
@@ -342,6 +343,7 @@ class PaperRepository:
             "id": f"id {direction}",
             "date": f"COALESCE(published, created_at) {direction}",
             "title": f"title {direction}",
+            "created_at": f"created_at {direction}",
         }
         order_sql = order_clauses.get(sort_by, f"id {direction}")
         where_clause = "" if journal is None else "WHERE journal = ?"

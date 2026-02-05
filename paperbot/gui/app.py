@@ -53,6 +53,29 @@ templates = Jinja2Templates(directory=os.path.join(base_dir, "templates"))
 # 초록 등에 들어온 이스케이프된 HTML(&lt;, &gt;) 복원 후 렌더링용
 templates.env.filters["unescape_html"] = lambda s: html.unescape(s) if s else ""
 
+
+def format_read_date(date_str: str) -> str:
+    """Format date string to 'Feb 11, 2026' style."""
+    if not date_str:
+        return ""
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00").split("+")[0])
+        return dt.strftime("%b %d, %Y")
+    except Exception:
+        return date_str[:10] if date_str else ""
+
+
+def get_date_key(date_str: str) -> str:
+    """Extract date part (YYYY-MM-DD) from datetime string."""
+    if not date_str:
+        return ""
+    return date_str[:10]
+
+
+templates.env.filters["format_read_date"] = format_read_date
+templates.env.filters["date_key"] = get_date_key
+
 app = FastAPI(lifespan=lifespan)
 
 
@@ -170,9 +193,9 @@ async def papers_read(
     journal: str = Query(""),
     order: str = Query("desc", description="Sort order: asc or desc"),
 ):
-    """Get read papers list (partial for HTMX)."""
+    """Get read papers list (partial for HTMX). Sorted by created_at (read date)."""
     journal_filter = journal if journal else None
-    papers = state.repo.find_by_status("read", limit=500, sort_by="date", order=order, journal=journal_filter)
+    papers = state.repo.find_by_status("read", limit=500, sort_by="created_at", order=order, journal=journal_filter)
     
     if q:
         q_lower = q.lower()

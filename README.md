@@ -183,7 +183,6 @@ uv run paperbot export
 - start date, end date 선택하고 그 사이에 published 된 논문들 필터링
 - start date, end date 선택하고 그 사이에 created 된 논문들 필터링
 - tab 추가 (all 에서는 status tag 표시, tag 별로 필터링 가능하게 (multiselect로))
-- read  tab추가, read tab 에는 created_at 으로 북마킹 - pick 기능 disabled
 - keyword 필터링 (multiselect? config에 미리 세팅?)
 </details>
 
