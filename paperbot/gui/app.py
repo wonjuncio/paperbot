@@ -105,12 +105,46 @@ async def index(request: Request):
 # ============================================================================
 
 
+def _filter_by_keywords(
+    papers: list[Paper],
+    keywords: list[str],
+    mode: str = "or",
+) -> list[Paper]:
+    """Filter papers by keywords in title only.
+    
+    Uses substring matching (e.g., "oxygen" matches "deoxygenation").
+    
+    Args:
+        papers: List of papers to filter
+        keywords: List of keyword strings
+        mode: 'or' (any keyword matches) or 'and' (all keywords must match)
+    
+    Returns:
+        Filtered list of papers
+    """
+    if not keywords:
+        return papers
+    
+    keywords_lower = [k.lower() for k in keywords]
+    
+    def matches_paper(paper: Paper) -> bool:
+        title = (paper.title or "").lower()
+        if mode == "and":
+            return all(kw in title for kw in keywords_lower)
+        else:  # or
+            return any(kw in title for kw in keywords_lower)
+    
+    return [p for p in papers if matches_paper(p)]
+
+
 @app.get("/papers/new", response_class=HTMLResponse)
 async def papers_new(
     request: Request,
     q: str = Query("", description="Search query"),
     journal: str = Query("", description="Journal filter"),
     order: str = Query("desc", description="Sort order: asc or desc"),
+    keywords: str = Query("", description="Comma-separated keywords"),
+    keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
 ):
     """Get new papers list (partial for HTMX)."""
     journal_filter = journal if journal else None
@@ -126,6 +160,11 @@ async def papers_new(
             or q_lower in (p.authors or "").lower()
         ]
     
+    # Filter by keywords
+    if keywords:
+        kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+        papers = _filter_by_keywords(papers, kw_list, keyword_mode)
+    
     response = templates.TemplateResponse(
         "partials/paper_list.html",
         {"request": request, "papers": papers, "tab": "new", "empty_message": "새로운 논문이 없습니다. Fetch New 버튼을 클릭하세요."},
@@ -139,6 +178,8 @@ async def papers_picked(
     request: Request,
     q: str = Query(""),
     order: str = Query("desc", description="Sort order: asc or desc"),
+    keywords: str = Query("", description="Comma-separated keywords"),
+    keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
 ):
     """Get picked papers list (partial for HTMX)."""
     papers = state.repo.find_picked(limit=100, order=order)
@@ -150,6 +191,11 @@ async def papers_picked(
             if q_lower in (p.title or "").lower()
             or q_lower in (p.journal or "").lower()
         ]
+    
+    # Filter by keywords
+    if keywords:
+        kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+        papers = _filter_by_keywords(papers, kw_list, keyword_mode)
     
     response = templates.TemplateResponse(
         "partials/paper_list.html",
@@ -165,6 +211,8 @@ async def papers_archive(
     q: str = Query(""),
     journal: str = Query(""),
     order: str = Query("desc", description="Sort order: asc or desc"),
+    keywords: str = Query("", description="Comma-separated keywords"),
+    keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
 ):
     """Get archived papers list (partial for HTMX)."""
     journal_filter = journal if journal else None
@@ -177,6 +225,11 @@ async def papers_archive(
             if q_lower in (p.title or "").lower()
             or q_lower in (p.journal or "").lower()
         ]
+    
+    # Filter by keywords
+    if keywords:
+        kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+        papers = _filter_by_keywords(papers, kw_list, keyword_mode)
     
     response = templates.TemplateResponse(
         "partials/paper_list.html",
@@ -192,6 +245,8 @@ async def papers_read(
     q: str = Query(""),
     journal: str = Query(""),
     order: str = Query("desc", description="Sort order: asc or desc"),
+    keywords: str = Query("", description="Comma-separated keywords"),
+    keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
 ):
     """Get read papers list (partial for HTMX). Sorted by created_at (read date)."""
     journal_filter = journal if journal else None
@@ -205,6 +260,11 @@ async def papers_read(
             or q_lower in (p.journal or "").lower()
             or q_lower in (p.authors or "").lower()
         ]
+    
+    # Filter by keywords
+    if keywords:
+        kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+        papers = _filter_by_keywords(papers, kw_list, keyword_mode)
     
     response = templates.TemplateResponse(
         "partials/paper_list.html",
@@ -220,6 +280,8 @@ async def papers_all(
     q: str = Query(""),
     journal: str = Query(""),
     order: str = Query("desc", description="Sort order: asc or desc"),
+    keywords: str = Query("", description="Comma-separated keywords"),
+    keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
 ):
     """Get all papers in DB (partial for HTMX)."""
     journal_filter = journal if journal else None
@@ -233,6 +295,11 @@ async def papers_all(
             or q_lower in (p.journal or "").lower()
             or q_lower in (p.authors or "").lower()
         ]
+    
+    # Filter by keywords
+    if keywords:
+        kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+        papers = _filter_by_keywords(papers, kw_list, keyword_mode)
     
     response = templates.TemplateResponse(
         "partials/paper_list.html",

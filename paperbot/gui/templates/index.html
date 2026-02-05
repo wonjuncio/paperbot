@@ -465,6 +465,114 @@
             animation: pulse-dot 1.5s ease-in-out infinite;
         }
         
+        /* 키워드 필터 스타일 */
+        .keyword-input {
+            width: 100%;
+            height: 32px;
+            padding: 0 0.75rem;
+            font-size: 0.8125rem;
+            background-color: var(--surface-elevated);
+            border: 1px solid var(--border-base);
+            border-radius: 0.375rem;
+            color: var(--content-primary);
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .keyword-input:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 20%, transparent);
+        }
+        .keyword-input::placeholder {
+            color: var(--content-muted);
+        }
+        
+        .keyword-chips-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            overflow-y: auto;
+            max-height: 180px;
+            min-height: 40px;
+        }
+        
+        .keyword-placeholder {
+            color: var(--content-muted);
+            font-size: 0.8125rem;
+            font-style: italic;
+            padding: 0.5rem 0;
+        }
+        
+        .keyword-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0 0.5rem;
+            height: 30px;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            line-height: 1;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: 1px solid transparent;
+        }
+        
+        /* 활성 상태 */
+        .keyword-chip.active {
+            background-color: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+            color: var(--accent-primary);
+            border-color: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+        }
+        .keyword-chip.active:hover {
+            background-color: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+        }
+        
+        /* 비활성 상태 */
+        .keyword-chip.inactive {
+            background-color: var(--accent-muted-subtle);
+            color: var(--content-muted);
+            border-color: var(--border-base);
+        }
+        .keyword-chip.inactive:hover {
+            background-color: var(--surface-overlay);
+            color: var(--content-secondary);
+        }
+        
+        /* 삭제 버튼 */
+        .keyword-chip-delete {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            opacity: 0.6;
+            transition: all 0.15s ease;
+        }
+        .keyword-chip-delete:hover {
+            opacity: 1;
+            background-color: #ef4444;
+            color: white;
+        }
+        .keyword-chip-delete svg {
+            width: 10px;
+            height: 10px;
+        }
+        
+        /* 중복 키워드 흔들림 애니메이션 */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-4px); }
+            40% { transform: translateX(4px); }
+            60% { transform: translateX(-4px); }
+            80% { transform: translateX(4px); }
+        }
+        .keyword-chip.shake {
+            animation: shake 0.4s ease-in-out;
+            background-color: color-mix(in srgb, var(--accent-warning) 30%, transparent) !important;
+            border-color: var(--accent-warning) !important;
+        }
+        
         /* HTMX 로딩 인디케이터 */
         .htmx-request .loading-indicator {
             display: inline-block;
@@ -633,6 +741,39 @@
             </select>
         </div>
         
+        <!-- Keyword Filter -->
+        <div class="p-4 border-t border-border-base flex flex-col" style="max-height: 320px;">
+            <div class="flex items-center justify-between mb-3">
+                <div class="section-header">키워드 필터</div>
+                <!-- AND/OR Toggle -->
+                <div class="flex items-center gap-1.5">
+                    <span id="keyword-mode-label" class="text-xs text-content-muted">OR</span>
+                    <button id="keyword-mode-toggle" 
+                            onclick="toggleKeywordMode()"
+                            class="relative w-8 h-4 rounded-full bg-surface-overlay border border-border-base transition-colors"
+                            title="OR: 키워드 중 하나라도 포함 / AND: 모든 키워드 포함">
+                        <span id="keyword-mode-knob" class="absolute top-0.5 left-0.5 w-2.5 h-2.5 rounded-full bg-content-muted transition-all"></span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Keyword Input -->
+            <input type="text" 
+                   id="keyword-input"
+                   placeholder="키워드 입력 후 Enter"
+                   class="keyword-input mb-3"
+                   onkeydown="handleKeywordInput(event)">
+            
+            <!-- Keyword Chips Container -->
+            <div id="keyword-chips" class="keyword-chips-container custom-scroll">
+                <!-- Empty placeholder -->
+                <div id="keyword-placeholder" class="keyword-placeholder">
+                    관심 키워드를 입력하세요
+                </div>
+                <!-- Chips will be added here -->
+            </div>
+        </div>
+        
         <!-- Spacer -->
         <div class="flex-1"></div>
         
@@ -727,6 +868,10 @@
         let shouldScrollToSelected = false;  // flag to scroll to selected card after sort change
         const titles = { new: 'New Papers', picked: 'Picked Papers', archive: 'Archived Papers', read: 'Read Papers', all: 'All Papers' };
         
+        // Keyword filter state
+        let keywords = [];  // Array of { text: string, active: boolean }
+        let keywordMode = 'or';  // 'or' or 'and'
+        
         function updatePaperListSelection(paperId) {
             selectedPaperId = paperId;
             const listEl = document.getElementById('paper-list');
@@ -787,6 +932,13 @@
             if (journal) params.set('journal', journal);
             params.set('order', sortOrder);
             
+            // Add active keywords to params
+            const activeKeywords = keywords.filter(k => k.active).map(k => k.text);
+            if (activeKeywords.length > 0) {
+                params.set('keywords', activeKeywords.join(','));
+                params.set('keyword_mode', keywordMode);
+            }
+            
             const url = '/papers/' + currentTab + (params.toString() ? '?' + params.toString() : '');
             htmx.ajax('GET', url, '#paper-list');
         }
@@ -798,6 +950,126 @@
         
         function filterByJournal(journal) {
             loadPapers();
+        }
+        
+        // ============================================
+        // Keyword Filter Functions
+        // ============================================
+        
+        function handleKeywordInput(event) {
+            if (event.key !== 'Enter') return;
+            
+            const input = event.target;
+            const text = input.value.trim().toLowerCase();
+            
+            if (!text) return;
+            
+            // Check for duplicate
+            const existingIndex = keywords.findIndex(k => k.text.toLowerCase() === text);
+            if (existingIndex >= 0) {
+                // Shake the existing chip
+                const chips = document.querySelectorAll('.keyword-chip');
+                chips.forEach(chip => {
+                    if (chip.dataset.keyword.toLowerCase() === text) {
+                        chip.classList.add('shake');
+                        setTimeout(() => chip.classList.remove('shake'), 400);
+                    }
+                });
+                input.value = '';
+                return;
+            }
+            
+            // Add new keyword (active by default)
+            keywords.push({ text: text, active: true });
+            input.value = '';
+            
+            renderKeywordChips();
+            loadPapers();
+        }
+        
+        function toggleKeyword(text) {
+            const keyword = keywords.find(k => k.text === text);
+            if (keyword) {
+                keyword.active = !keyword.active;
+                renderKeywordChips();
+                loadPapers();
+            }
+        }
+        
+        function deleteKeyword(text, event) {
+            event.stopPropagation();  // Prevent toggle
+            keywords = keywords.filter(k => k.text !== text);
+            renderKeywordChips();
+            loadPapers();
+        }
+        
+        function toggleKeywordMode() {
+            keywordMode = keywordMode === 'or' ? 'and' : 'or';
+            
+            const label = document.getElementById('keyword-mode-label');
+            const toggle = document.getElementById('keyword-mode-toggle');
+            const knob = document.getElementById('keyword-mode-knob');
+            
+            if (keywordMode === 'and') {
+                label.textContent = 'AND';
+                toggle.classList.add('bg-accent-primary-subtle');
+                toggle.classList.remove('bg-surface-overlay');
+                knob.classList.add('bg-accent-primary');
+                knob.classList.remove('bg-content-muted');
+                knob.style.left = 'calc(100% - 14px)';
+            } else {
+                label.textContent = 'OR';
+                toggle.classList.remove('bg-accent-primary-subtle');
+                toggle.classList.add('bg-surface-overlay');
+                knob.classList.remove('bg-accent-primary');
+                knob.classList.add('bg-content-muted');
+                knob.style.left = '2px';
+            }
+            
+            // Only reload if there are active keywords
+            const activeKeywords = keywords.filter(k => k.active);
+            if (activeKeywords.length > 1) {
+                loadPapers();
+            }
+        }
+        
+        function renderKeywordChips() {
+            const container = document.getElementById('keyword-chips');
+            const placeholder = document.getElementById('keyword-placeholder');
+            
+            // Clear existing chips (except placeholder)
+            container.querySelectorAll('.keyword-chip').forEach(chip => chip.remove());
+            
+            if (keywords.length === 0) {
+                placeholder.style.display = 'block';
+                return;
+            }
+            
+            placeholder.style.display = 'none';
+            
+            keywords.forEach(keyword => {
+                const chip = document.createElement('div');
+                chip.className = `keyword-chip ${keyword.active ? 'active' : 'inactive'}`;
+                chip.dataset.keyword = keyword.text;
+                chip.onclick = () => toggleKeyword(keyword.text);
+                
+                chip.innerHTML = `
+                    <span>${escapeHtml(keyword.text)}</span>
+                    <span class="keyword-chip-delete" onclick="deleteKeyword('${escapeHtml(keyword.text)}', event)">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </span>
+                `;
+                
+                container.appendChild(chip);
+            });
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
         
         // Update tab badges with fresh counts
