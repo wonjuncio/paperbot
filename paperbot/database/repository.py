@@ -317,6 +317,47 @@ class PaperRepository:
             )
             return [row["journal"] for row in cursor.fetchall()]
 
+    def get_date_range(self, status: Optional[str] = None, date_field: str = "published") -> dict[str, Optional[str]]:
+        """Get min and max dates for papers.
+
+        Args:
+            status: If set, filter by this status. None for all papers.
+            date_field: 'published' for publication date, 'created_at' for collection date.
+
+        Returns:
+            Dict with 'min_date' and 'max_date' as ISO date strings (YYYY-MM-DD), or None if no data.
+        """
+        field = "published" if date_field == "published" else "created_at"
+        
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            if status:
+                cursor.execute(
+                    f"""
+                    SELECT 
+                        MIN(DATE({field})) as min_date,
+                        MAX(DATE({field})) as max_date
+                    FROM papers
+                    WHERE status = ? AND {field} IS NOT NULL
+                    """,
+                    (status,),
+                )
+            else:
+                cursor.execute(
+                    f"""
+                    SELECT 
+                        MIN(DATE({field})) as min_date,
+                        MAX(DATE({field})) as max_date
+                    FROM papers
+                    WHERE {field} IS NOT NULL
+                    """
+                )
+            row = cursor.fetchone()
+            return {
+                "min_date": row["min_date"] if row else None,
+                "max_date": row["max_date"] if row else None,
+            }
+
     def find_by_id(self, paper_id: int) -> Optional[Paper]:
         """Find a single paper by ID.
 

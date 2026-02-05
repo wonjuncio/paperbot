@@ -137,6 +137,45 @@ def _filter_by_keywords(
     return [p for p in papers if matches_paper(p)]
 
 
+def _filter_by_date(
+    papers: list[Paper],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    date_field: str = "published",
+) -> list[Paper]:
+    """Filter papers by date range.
+    
+    Args:
+        papers: List of papers to filter
+        date_from: Start date (YYYY-MM-DD), inclusive
+        date_to: End date (YYYY-MM-DD), inclusive
+        date_field: 'published' or 'created_at'
+    
+    Returns:
+        Filtered list of papers
+    """
+    if not date_from and not date_to:
+        return papers
+    
+    def get_date(paper: Paper) -> Optional[str]:
+        if date_field == "created_at":
+            return paper.created_at[:10] if paper.created_at else None
+        else:
+            return paper.published[:10] if paper.published else None
+    
+    def in_range(paper: Paper) -> bool:
+        paper_date = get_date(paper)
+        if not paper_date:
+            return False
+        if date_from and paper_date < date_from:
+            return False
+        if date_to and paper_date > date_to:
+            return False
+        return True
+    
+    return [p for p in papers if in_range(p)]
+
+
 @app.get("/papers/new", response_class=HTMLResponse)
 async def papers_new(
     request: Request,
@@ -145,6 +184,8 @@ async def papers_new(
     order: str = Query("desc", description="Sort order: asc or desc"),
     keywords: str = Query("", description="Comma-separated keywords"),
     keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
+    date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
+    date_to: str = Query("", description="End date (YYYY-MM-DD)"),
 ):
     """Get new papers list (partial for HTMX)."""
     journal_filter = journal if journal else None
@@ -165,6 +206,10 @@ async def papers_new(
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
         papers = _filter_by_keywords(papers, kw_list, keyword_mode)
     
+    # Filter by date range
+    if date_from or date_to:
+        papers = _filter_by_date(papers, date_from or None, date_to or None, "published")
+    
     response = templates.TemplateResponse(
         "partials/paper_list.html",
         {"request": request, "papers": papers, "tab": "new", "empty_message": "새로운 논문이 없습니다. Fetch New 버튼을 클릭하세요."},
@@ -180,6 +225,8 @@ async def papers_picked(
     order: str = Query("desc", description="Sort order: asc or desc"),
     keywords: str = Query("", description="Comma-separated keywords"),
     keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
+    date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
+    date_to: str = Query("", description="End date (YYYY-MM-DD)"),
 ):
     """Get picked papers list (partial for HTMX)."""
     papers = state.repo.find_picked(limit=100, order=order)
@@ -197,6 +244,10 @@ async def papers_picked(
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
         papers = _filter_by_keywords(papers, kw_list, keyword_mode)
     
+    # Filter by date range
+    if date_from or date_to:
+        papers = _filter_by_date(papers, date_from or None, date_to or None, "published")
+    
     response = templates.TemplateResponse(
         "partials/paper_list.html",
         {"request": request, "papers": papers, "tab": "picked", "empty_message": "선택된 논문이 없습니다."},
@@ -213,6 +264,8 @@ async def papers_archive(
     order: str = Query("desc", description="Sort order: asc or desc"),
     keywords: str = Query("", description="Comma-separated keywords"),
     keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
+    date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
+    date_to: str = Query("", description="End date (YYYY-MM-DD)"),
 ):
     """Get archived papers list (partial for HTMX)."""
     journal_filter = journal if journal else None
@@ -231,6 +284,10 @@ async def papers_archive(
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
         papers = _filter_by_keywords(papers, kw_list, keyword_mode)
     
+    # Filter by date range
+    if date_from or date_to:
+        papers = _filter_by_date(papers, date_from or None, date_to or None, "published")
+    
     response = templates.TemplateResponse(
         "partials/paper_list.html",
         {"request": request, "papers": papers, "tab": "archive", "empty_message": "아카이브된 논문이 없습니다."},
@@ -247,6 +304,8 @@ async def papers_read(
     order: str = Query("desc", description="Sort order: asc or desc"),
     keywords: str = Query("", description="Comma-separated keywords"),
     keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
+    date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
+    date_to: str = Query("", description="End date (YYYY-MM-DD)"),
 ):
     """Get read papers list (partial for HTMX). Sorted by created_at (read date)."""
     journal_filter = journal if journal else None
@@ -266,6 +325,10 @@ async def papers_read(
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
         papers = _filter_by_keywords(papers, kw_list, keyword_mode)
     
+    # Filter by date range (using created_at for Read tab)
+    if date_from or date_to:
+        papers = _filter_by_date(papers, date_from or None, date_to or None, "created_at")
+    
     response = templates.TemplateResponse(
         "partials/paper_list.html",
         {"request": request, "papers": papers, "tab": "read", "empty_message": "읽은 논문이 없습니다."},
@@ -282,6 +345,8 @@ async def papers_all(
     order: str = Query("desc", description="Sort order: asc or desc"),
     keywords: str = Query("", description="Comma-separated keywords"),
     keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
+    date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
+    date_to: str = Query("", description="End date (YYYY-MM-DD)"),
 ):
     """Get all papers in DB (partial for HTMX)."""
     journal_filter = journal if journal else None
@@ -300,6 +365,10 @@ async def papers_all(
     if keywords:
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
         papers = _filter_by_keywords(papers, kw_list, keyword_mode)
+    
+    # Filter by date range
+    if date_from or date_to:
+        papers = _filter_by_date(papers, date_from or None, date_to or None, "published")
     
     response = templates.TemplateResponse(
         "partials/paper_list.html",
@@ -392,6 +461,39 @@ async def get_badges(request: Request):
     from fastapi.responses import JSONResponse
     stats = state.repo.get_status_counts()
     return JSONResponse({"new": stats.get("new", 0), "picked": stats.get("picked", 0)})
+
+
+@app.get("/date-range")
+async def get_date_range(
+    tab: str = Query("new", description="Tab name: new, picked, archive, read, all"),
+):
+    """Get min/max date range for papers in the given tab."""
+    from fastapi.responses import JSONResponse
+    
+    # Determine status and date field based on tab
+    if tab == "read":
+        date_field = "created_at"
+        status = "read"
+    elif tab == "new":
+        date_field = "published"
+        status = "new"
+    elif tab == "archive":
+        date_field = "published"
+        status = "archived"
+    elif tab == "picked":
+        # Picked papers can have any status, get range from all picked
+        date_field = "published"
+        status = None  # Will need special handling
+    else:  # all
+        date_field = "published"
+        status = None
+    
+    date_range = state.repo.get_date_range(status=status, date_field=date_field)
+    return JSONResponse({
+        "min_date": date_range["min_date"],
+        "max_date": date_range["max_date"],
+        "date_field": "collected" if tab == "read" else "published",
+    })
 
 
 # ============================================================================

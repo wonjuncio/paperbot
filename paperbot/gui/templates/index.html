@@ -573,6 +573,148 @@
             border-color: var(--accent-warning) !important;
         }
         
+        /* 날짜 선택기 스타일 */
+        .date-picker-popup {
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            width: 320px;
+            z-index: 100;
+            background-color: var(--surface-elevated);
+            border: 1px solid var(--border-base);
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+            padding: 1rem;
+        }
+        .date-picker-popup.hidden {
+            display: none;
+        }
+        .date-picker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+        .date-picker-nav {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.375rem;
+            color: var(--content-secondary);
+            font-size: 1rem;
+            transition: all 0.15s ease;
+        }
+        .date-picker-nav:hover {
+            background-color: var(--surface-overlay);
+            color: var(--content-primary);
+        }
+        .date-picker-weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--content-muted);
+            margin-bottom: 0.5rem;
+        }
+        .date-picker-days {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px 0;
+        }
+        .date-picker-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.1s ease;
+            color: var(--content-primary);
+            position: relative;
+        }
+        .date-picker-day:hover:not(.selected-start):not(.selected-end) {
+            background-color: var(--surface-overlay);
+            border-radius: 50%;
+        }
+        .date-picker-day.today {
+            font-weight: 700;
+            color: var(--accent-primary);
+        }
+        .date-picker-day.in-range {
+            background-color: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+        }
+        .date-picker-day.selected-start,
+        .date-picker-day.selected-end {
+            color: white;
+            z-index: 1;
+        }
+        .date-picker-day.selected-start::before,
+        .date-picker-day.selected-end::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-color: var(--accent-primary);
+            border-radius: 50%;
+            z-index: -1;
+        }
+        .date-picker-day.selected-start.in-range {
+            background: linear-gradient(to right, transparent 50%, color-mix(in srgb, var(--accent-primary) 20%, transparent) 50%);
+        }
+        .date-picker-day.selected-end.in-range {
+            background: linear-gradient(to left, transparent 50%, color-mix(in srgb, var(--accent-primary) 20%, transparent) 50%);
+        }
+        .date-picker-day.selected-start.selected-end {
+            background: transparent;
+        }
+        .date-picker-day.other-month {
+            color: var(--content-muted);
+            opacity: 0.4;
+        }
+        .date-picker-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-base);
+        }
+        .date-picker-reset {
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+            font-size: 0.8125rem;
+            color: var(--content-muted);
+            transition: color 0.15s ease;
+        }
+        .date-picker-reset:hover {
+            color: var(--content-primary);
+        }
+        .date-picker-cancel, .date-picker-apply {
+            padding: 0.5rem 1rem;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            border-radius: 0.375rem;
+            transition: all 0.15s ease;
+        }
+        .date-picker-cancel {
+            color: var(--content-secondary);
+            background-color: var(--surface-overlay);
+        }
+        .date-picker-cancel:hover {
+            background-color: var(--border-base);
+        }
+        .date-picker-apply {
+            color: white;
+            background-color: var(--accent-primary);
+        }
+        .date-picker-apply:hover {
+            background-color: var(--accent-primary-hover);
+        }
+        
         /* HTMX 로딩 인디케이터 */
         .htmx-request .loading-indicator {
             display: inline-block;
@@ -678,9 +820,8 @@
     <!-- Sidebar -->
     <aside class="w-64 bg-surface-elevated border-r border-border-base flex flex-col shadow-sm">
         <!-- Logo -->
-        <div class="h-16 border-b border-border-base flex items-center px-5 gap-3">
-            <span class="text-2xl">📄</span>
-            <h1 class="text-xl font-bold bg-gradient-to-r from-accent-primary to-indigo-500 bg-clip-text text-transparent">PaperBot</h1>
+        <div class="h-16 border-b border-border-base flex items-center justify-center px-5 gap-3">
+            <h1 class="text-3xl font-bold bg-gradient-to-r from-accent-primary to-indigo-500 bg-clip-text text-transparent">PaperBot</h1>
         </div>
         
         <!-- Stats -->
@@ -828,11 +969,56 @@
         <div class="flex-1 flex overflow-hidden">
             <!-- Paper List -->
             <div class="w-2/5 border-r border-border-base bg-surface-elevated flex flex-col">
-                <div class="px-3 py-1 border-b border-border-base bg-surface-overlay flex justify-between items-center section-header">
-                    <span id="list-title">New Papers</span>
-                    <button type="button" id="sort-toggle" onclick="toggleSortOrder()" class="text-content-muted hover:text-content-primary transition-colors" title="클릭하면 날짜 정렬 방향 전환">
-                        <span id="sort-label">▲날짜순</span>
-                    </button>
+                <!-- Filter Bar: 2-row layout -->
+                <div class="border-b border-border-base bg-surface-overlay">
+                    <!-- Row 1: Tab info + Sort -->
+                    <div class="px-3 py-1 flex justify-between items-center section-header">
+                        <span id="list-title">New Papers</span>
+                        <button type="button" id="sort-toggle" onclick="toggleSortOrder()" class="text-content-muted hover:text-content-primary transition-colors" title="클릭하면 날짜 정렬 방향 전환">
+                            <span id="sort-label">▲날짜순</span>
+                        </button>
+                    </div>
+                    <!-- Row 2: Date Filter -->
+                    <div class="px-3 py-1.5 border-t border-border-subtle flex justify-end">
+                        <div class="relative">
+                            <button id="date-picker-btn" 
+                                    onclick="toggleDatePicker()"
+                                    class="flex items-center gap-1.5 text-xs text-content-secondary hover:text-content-primary transition-colors">
+                                <svg class="w-3.5 h-3.5 text-content-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                <span id="date-range-display" class="font-medium">전체 기간</span>
+                                <svg class="w-2.5 h-2.5 text-content-muted" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                                </svg>
+                            </button>
+                            
+                            <!-- Calendar Popup -->
+                            <div id="date-picker-popup" class="date-picker-popup hidden">
+                                <div class="date-picker-header">
+                                    <button onclick="prevMonth()" class="date-picker-nav">&lt;</button>
+                                    <span id="calendar-month-year" class="text-sm font-medium text-content-primary"></span>
+                                    <button onclick="nextMonth()" class="date-picker-nav">&gt;</button>
+                                </div>
+                                <div class="date-picker-weekdays">
+                                    <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+                                </div>
+                                <div id="calendar-days" class="date-picker-days"></div>
+                                <div class="date-picker-footer">
+                                    <button onclick="resetDateFilter()" class="date-picker-reset" title="날짜 필터 초기화">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                        </svg>
+                                        <span>초기화</span>
+                                    </button>
+                                    <div class="flex gap-2">
+                                        <button onclick="cancelDatePicker()" class="date-picker-cancel">취소</button>
+                                        <button onclick="applyDateFilter()" class="date-picker-apply">적용</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div id="paper-list" class="flex-1 overflow-y-auto custom-scroll"
                      hx-get="/papers/new" hx-trigger="load" hx-swap="innerHTML">
@@ -871,6 +1057,16 @@
         // Keyword filter state
         let keywords = [];  // Array of keyword strings
         let keywordMode = 'or';  // 'or' or 'and'
+        
+        // Date filter state
+        let dateFrom = null;  // YYYY-MM-DD string or null
+        let dateTo = null;    // YYYY-MM-DD string or null
+        let tempDateFrom = null;  // Temporary selection before apply
+        let tempDateTo = null;
+        let calendarMonth = new Date().getMonth();
+        let calendarYear = new Date().getFullYear();
+        let dateRangeMin = null;  // Min date from DB
+        let dateRangeMax = null;  // Max date from DB
         
         function updatePaperListSelection(paperId) {
             selectedPaperId = paperId;
@@ -912,6 +1108,17 @@
             // Update sort label based on tab
             updateSortLabel();
             
+            // Update date filter label based on tab
+            updateDateFilterLabel();
+            
+            // Reset date filter when switching tabs
+            dateFrom = null;
+            dateTo = null;
+            updateDateRangeDisplay();
+            
+            // Fetch date range for new tab
+            fetchDateRange();
+            
             // Fetch papers
             loadPapers();
         }
@@ -937,6 +1144,10 @@
                 params.set('keywords', keywords.join(','));
                 params.set('keyword_mode', keywordMode);
             }
+            
+            // Add date filter to params
+            if (dateFrom) params.set('date_from', dateFrom);
+            if (dateTo) params.set('date_to', dateTo);
             
             const url = '/papers/' + currentTab + (params.toString() ? '?' + params.toString() : '');
             htmx.ajax('GET', url, '#paper-list');
@@ -1057,6 +1268,242 @@
             div.textContent = text;
             return div.innerHTML;
         }
+        
+        // ============================================
+        // Date Filter Functions
+        // ============================================
+        
+        function updateDateFilterLabel() {
+            // Label removed - no action needed
+        }
+        
+        function updateDateRangeDisplay() {
+            const display = document.getElementById('date-range-display');
+            if (!dateFrom && !dateTo) {
+                display.textContent = '전체 기간';
+            } else if (dateFrom && dateTo) {
+                display.textContent = `${formatDisplayDate(dateFrom)} ~ ${formatDisplayDate(dateTo)}`;
+            } else if (dateFrom) {
+                display.textContent = `${formatDisplayDate(dateFrom)} ~`;
+            } else {
+                display.textContent = `~ ${formatDisplayDate(dateTo)}`;
+            }
+        }
+        
+        function formatDisplayDate(dateStr) {
+            if (!dateStr) return '';
+            const [y, m, d] = dateStr.split('-');
+            return `${y}.${m}.${d}`;
+        }
+        
+        function fetchDateRange() {
+            fetch(`/date-range?tab=${currentTab}`)
+                .then(res => res.json())
+                .then(data => {
+                    dateRangeMin = data.min_date;
+                    dateRangeMax = data.max_date;
+                })
+                .catch(err => {
+                    console.error('Failed to fetch date range:', err);
+                    dateRangeMin = null;
+                    dateRangeMax = null;
+                });
+        }
+        
+        function toggleDatePicker() {
+            const popup = document.getElementById('date-picker-popup');
+            if (popup.classList.contains('hidden')) {
+                // Open: reset temp selection to current filter
+                tempDateFrom = dateFrom;
+                tempDateTo = dateTo;
+                // Set calendar to current month or dateFrom month
+                if (dateFrom) {
+                    const d = new Date(dateFrom);
+                    calendarMonth = d.getMonth();
+                    calendarYear = d.getFullYear();
+                } else {
+                    const now = new Date();
+                    calendarMonth = now.getMonth();
+                    calendarYear = now.getFullYear();
+                }
+                renderCalendar();
+                popup.classList.remove('hidden');
+            } else {
+                popup.classList.add('hidden');
+            }
+        }
+        
+        function prevMonth() {
+            calendarMonth--;
+            if (calendarMonth < 0) {
+                calendarMonth = 11;
+                calendarYear--;
+            }
+            renderCalendar();
+        }
+        
+        function nextMonth() {
+            calendarMonth++;
+            if (calendarMonth > 11) {
+                calendarMonth = 0;
+                calendarYear++;
+            }
+            renderCalendar();
+        }
+        
+        function renderCalendar() {
+            const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+            document.getElementById('calendar-month-year').textContent = `${calendarYear}년 ${monthNames[calendarMonth]}`;
+            
+            const daysContainer = document.getElementById('calendar-days');
+            daysContainer.innerHTML = '';
+            
+            const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
+            const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+            const daysInPrevMonth = new Date(calendarYear, calendarMonth, 0).getDate();
+            
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0];
+            
+            // Previous month days
+            for (let i = firstDay - 1; i >= 0; i--) {
+                const day = daysInPrevMonth - i;
+                const dateStr = formatDateStr(calendarYear, calendarMonth - 1, day);
+                const dayEl = createDayElement(day, dateStr, true);
+                daysContainer.appendChild(dayEl);
+            }
+            
+            // Current month days
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = formatDateStr(calendarYear, calendarMonth, day);
+                const dayEl = createDayElement(day, dateStr, false);
+                
+                // Today highlight
+                if (dateStr === todayStr) {
+                    dayEl.classList.add('today');
+                }
+                
+                daysContainer.appendChild(dayEl);
+            }
+            
+            // Next month days to fill grid
+            const totalCells = firstDay + daysInMonth;
+            const remainingCells = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+            for (let day = 1; day <= remainingCells; day++) {
+                const dateStr = formatDateStr(calendarYear, calendarMonth + 1, day);
+                const dayEl = createDayElement(day, dateStr, true);
+                daysContainer.appendChild(dayEl);
+            }
+        }
+        
+        function createDayElement(day, dateStr, isOtherMonth) {
+            const dayEl = document.createElement('div');
+            dayEl.className = 'date-picker-day';
+            dayEl.textContent = day;
+            dayEl.dataset.date = dateStr;
+            
+            if (isOtherMonth) {
+                dayEl.classList.add('other-month');
+            }
+            
+            // All dates are clickable
+            dayEl.onclick = () => selectDate(dateStr);
+            
+            // Highlight selection and range
+            if (tempDateFrom && tempDateTo && tempDateFrom !== tempDateTo) {
+                // Range selection (두 날짜가 다를 때)
+                if (dateStr === tempDateFrom) {
+                    dayEl.classList.add('selected-start', 'in-range');
+                } else if (dateStr === tempDateTo) {
+                    dayEl.classList.add('selected-end', 'in-range');
+                } else if (dateStr > tempDateFrom && dateStr < tempDateTo) {
+                    dayEl.classList.add('in-range');
+                }
+            } else if (tempDateFrom && dateStr === tempDateFrom) {
+                // Single date selection
+                dayEl.classList.add('selected-start', 'selected-end');
+            } else if (tempDateTo && dateStr === tempDateTo) {
+                dayEl.classList.add('selected-start', 'selected-end');
+            }
+            
+            return dayEl;
+        }
+        
+        function formatDateStr(year, month, day) {
+            // Handle month overflow/underflow
+            const d = new Date(year, month, day);
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${dd}`;
+        }
+        
+        function selectDate(dateStr) {
+            if (!tempDateFrom || (tempDateFrom && tempDateTo)) {
+                // Start new selection
+                tempDateFrom = dateStr;
+                tempDateTo = null;
+            } else {
+                // Complete selection
+                if (dateStr < tempDateFrom) {
+                    tempDateTo = tempDateFrom;
+                    tempDateFrom = dateStr;
+                } else {
+                    tempDateTo = dateStr;
+                }
+            }
+            renderCalendar();
+        }
+        
+        function resetDateFilter() {
+            tempDateFrom = null;
+            tempDateTo = null;
+            dateFrom = null;
+            dateTo = null;
+            updateDateRangeDisplay();
+            renderCalendar();
+            document.getElementById('date-picker-popup').classList.add('hidden');
+            loadPapers();
+        }
+        
+        function cancelDatePicker() {
+            document.getElementById('date-picker-popup').classList.add('hidden');
+        }
+        
+        function applyDateFilter() {
+            dateFrom = tempDateFrom;
+            dateTo = tempDateTo;
+            updateDateRangeDisplay();
+            document.getElementById('date-picker-popup').classList.add('hidden');
+            loadPapers();
+        }
+        
+        // Close date picker when clicking outside
+        document.addEventListener('click', function(e) {
+            const popup = document.getElementById('date-picker-popup');
+            const btn = document.getElementById('date-picker-btn');
+            if (!popup || popup.classList.contains('hidden')) return;
+            
+            // Check if click is inside popup area using coordinates (more reliable)
+            const popupRect = popup.getBoundingClientRect();
+            const btnRect = btn.getBoundingClientRect();
+            const x = e.clientX;
+            const y = e.clientY;
+            
+            const inPopup = x >= popupRect.left && x <= popupRect.right && 
+                           y >= popupRect.top && y <= popupRect.bottom;
+            const inBtn = x >= btnRect.left && x <= btnRect.right && 
+                         y >= btnRect.top && y <= btnRect.bottom;
+            
+            if (!inPopup && !inBtn) {
+                popup.classList.add('hidden');
+            }
+        });
+        
+        // Fetch initial date range on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchDateRange();
+        });
         
         // Update tab badges with fresh counts
         function updateBadges() {
