@@ -181,9 +181,9 @@ uv run paperbot export
 # TODO
 <details>
 
-- start date, end date 선택하고 그 사이에 published 된 논문들 필터링
-- start date, end date 선택하고 그 사이에 created 된 논문들 필터링
-- tab 추가 (all 에서는 status tag 표시, tag 별로 필터링 가능하게 (multiselect로))
+- READ papers export 기능 구현
+- vector clustering 구현
+- Knowledge Map 구현
 
 </details>
 
