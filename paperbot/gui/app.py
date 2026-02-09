@@ -840,7 +840,7 @@ async def undo_read(request: Request, paper_id: int):
     if len(paper.title or "") > 40:
         title_short += "…"
 
-    toast_html = f"""<div class="toast toast-info" id="undo-read-toast-{paper_id}" style="animation: toastSlideIn 0.3s ease-out;">
+    toast_html = f"""<div class="toast toast-info" id="undo-read-toast-{paper_id}" style="animation: toastSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1);">
         <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
         </svg>

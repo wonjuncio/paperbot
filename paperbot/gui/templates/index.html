@@ -814,13 +814,12 @@
             gap: 0;
             pointer-events: none;
         }
-        .toast-container > .toast {
-            margin-bottom: 0.75rem;
-            transition: margin-bottom 0.4s ease-out;
-        }
-        /* Slot wrappers: no spacing when empty, pass gap to inner toast */
+        /* Slot wrappers: no box, children act as direct flex items */
         .toast-container > [id$="-slot"] {
             display: contents;
+        }
+        .toast-container .toast {
+            margin-bottom: 0.75rem;
         }
         .toast {
             pointer-events: auto;
@@ -833,20 +832,69 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            animation: toastSlideIn 0.3s ease-out;
+            overflow: hidden;
+            animation: toastSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1);
         }
+        /* Phase 1 (0-40%): space grows, toast still off-screen
+           Phase 2 (40-100%): toast slides in from right */
         @keyframes toastSlideIn {
-            from { transform: translateX(120%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
+            0% {
+                max-height: 0;
+                margin-bottom: 0;
+                padding-top: 0;
+                padding-bottom: 0;
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            40% {
+                max-height: 5rem;
+                margin-bottom: 0.75rem;
+                padding-top: 0.75rem;
+                padding-bottom: 0.75rem;
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            100% {
+                max-height: 5rem;
+                margin-bottom: 0.75rem;
+                padding-top: 0.75rem;
+                padding-bottom: 0.75rem;
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
+        /* Phase 1 (0-60%): slide out to right
+           Phase 2 (60-100%): space collapses smoothly */
         @keyframes toastSlideOut {
-            from { opacity: 1; transform: translateX(0); }
-            to   { opacity: 0; transform: translateX(120%); }
+            0% {
+                opacity: 1;
+                transform: translateX(0);
+                max-height: 5rem;
+                margin-bottom: 0.75rem;
+                padding-top: 0.75rem;
+                padding-bottom: 0.75rem;
+            }
+            60% {
+                opacity: 0;
+                transform: translateX(100%);
+                max-height: 5rem;
+                margin-bottom: 0.75rem;
+                padding-top: 0.75rem;
+                padding-bottom: 0.75rem;
+            }
+            100% {
+                opacity: 0;
+                transform: translateX(100%);
+                max-height: 0;
+                margin-bottom: 0;
+                padding-top: 0;
+                padding-bottom: 0;
+            }
         }
-        /* Auto-dismiss: slideIn 0.3s → visible 5s → fadeOut 2s */
+        /* Auto-dismiss: slideIn 0.5s → visible 5s → slideOut+collapse 2s */
         .toast-auto {
             animation:
-                toastSlideIn 0.3s ease-out,
+                toastSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1),
                 toastSlideOut 2s ease-out 5s forwards;
             overflow: hidden;
         }
@@ -1377,7 +1425,7 @@
             
             const el = document.createElement('div');
             el.className = `toast toast-${type}`;
-            el.style.animation = 'toastSlideIn 0.3s ease-out';
+            el.style.animation = 'toastSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1)';
             
             const iconHtml = (icon && TOAST_ICONS[icon]) ? TOAST_ICONS[icon]
                            : icon ? icon
