@@ -40,9 +40,20 @@
         
         <!-- Paper Info -->
         <div class="flex-1 min-w-0">
-            <h3 class="paper-title font-medium text-content-primary leading-snug line-clamp-2 text-sm mb-1.5 transition-colors">
-                {{ paper.title }}
-            </h3>
+            <div class="flex items-start gap-2 mb-1.5">
+                <h3 class="paper-title font-medium text-content-primary leading-snug line-clamp-2 text-sm flex-1 min-w-0 transition-colors">
+                    {{ paper.title }}
+                </h3>
+                {% if scores is defined and scores and paper.id in scores %}
+                    {% set _score = scores.get(paper.id) %}
+                    {% set _is_top = (top_ids is defined and top_ids and paper.id in top_ids) %}
+                    {% if _is_top or (_score is not none and _score >= 90) %}
+                        <span class="{% if _is_top %}badge-ai-gold-shimmer{% elif _score >= 95 %}badge-ai-gold{% else %}badge-ai-blue{% endif %} flex-shrink-0" title="AI Match Score">
+                            {{ _score|round(0)|int }}% match
+                        </span>
+                    {% endif %}
+                {% endif %}
+            </div>
             
             <div class="flex flex-wrap items-center gap-2 text-xs">
                 {% if paper.journal %}

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>PaperBot - AI Research Assistant</title>
+    <style>
+        :root {
+            --bg-dark: #1a1d23;
+            --sidebar-bg: #22272e;
+            --card-bg: #2d333b;
+            --accent-blue: #347dff;
+            --accent-green: #2ea043;
+            --text-main: #adbac7;
+            --text-bright: #ffffff;
+            --ai-gold: #ffcf40;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+        }
+
+        /* 사이드바 */
+        nav {
+            width: 260px;
+            background-color: var(--sidebar-bg);
+            padding: 20px;
+            border-right: 1px solid #444;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        .stat-box {
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-new { background: #1c2c42; border: 1px solid #347dff; }
+        .stat-read { background: #1c3326; border: 1px solid #2ea043; }
+
+        /* 논문 리스트 영역 */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 15px 30px;
+            background: var(--sidebar-bg);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .search-bar {
+            background: #222;
+            border: 1px solid #444;
+            padding: 8px 15px;
+            border-radius: 20px;
+            width: 300px;
+            color: white;
+        }
+
+        .content-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #paper-list {
+            width: 450px;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid #444;
+        }
+
+        /* AI 기능이 강화된 카드 디자인 */
+        .paper-card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid transparent;
+            transition: 0.3s;
+            position: relative;
+        }
+
+        .paper-card.ai-high { border-left-color: var(--ai-gold); } /* 의미 유사도 높음 */
+        
+        .ai-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: var(--ai-gold);
+            color: black;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .paper-title {
+            font-weight: bold;
+            color: var(--text-bright);
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .paper-meta {
+            font-size: 12px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .journal-tag { color: var(--accent-blue); }
+
+        /* 상세 보기 영역 */
+        #details-view {
+            flex: 1;
+            padding: 40px;
+            overflow-y: auto;
+        }
+
+        .abstract-box {
+            background: #22272e;
+            padding: 20px;
+            border-radius: 8px;
+            line-height: 1.6;
+            margin: 20px 0;
+        }
+
+        .ai-recommendation {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px dashed #444;
+        }
+
+        button {
+            background: var(--accent-blue);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <h2 style="color: var(--accent-blue);">PaperBot</h2>
+        <div class="stat-grid">
+            <div class="stat-box stat-new">
+                <div style="font-size: 20px; font-weight: bold;">12</div>
+                <div style="font-size: 10px;">NEW</div>
+            </div>
+            <div class="stat-box stat-read">
+                <div style="font-size: 20px; font-weight: bold; color: var(--accent-green);">19</div>
+                <div style="font-size: 10px;">READ</div>
+            </div>
+        </div>
+        <button style="width: 100%; margin-bottom: 10px;">Fetch New Papers</button>
+        <button style="width: 100%; background: #444;">Export Read List</button>
+    </nav>
+
+    <main>
+        <header>
+            <div class="tabs">
+                <span style="margin-right: 20px; color: var(--accent-blue); border-bottom: 2px solid var(--accent-blue);">Read</span>
+                <span style="margin-right: 20px; opacity: 0.5;">New</span>
+                <span style="opacity: 0.5;">Archive</span>
+            </div>
+            <input type="text" class="search-bar" placeholder="제목, 저널, AI 주제 검색...">
+        </header>
+
+        <div class="content-container">
+            <div id="paper-list">
+                <div style="font-size: 11px; margin-bottom: 10px; opacity: 0.6;">Read on Feb 09, 2026</div>
+                
+                <div class="paper-card ai-high">
+                    <span class="ai-badge">98% MATCH</span>
+                    <div class="paper-title">Perspective on Aqueous Batteries: Historical Milestones and Modern Revival</div>
+                    <div class="paper-meta">
+                        <span class="journal-tag">Advanced Materials</span>
+                        <span>2026-02-03</span>
+                    </div>
+                </div>
+
+                <div class="paper-card" style="border-left-color: #555;">
+                    <div class="paper-title">Localized Solvent-Anchored Carboxylate Ester Electrolyte...</div>
+                    <div class="paper-meta">
+                        <span class="journal-tag">Advanced Materials</span>
+                        <span>2026-02-03</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="details-view">
+                <h1>Perspective on Aqueous Batteries: Historical Milestones and Modern Revival</h1>
+                <div style="color: var(--accent-blue); margin-bottom: 20px;">Advanced Materials | 2026-02-03 | ✅ READ</div>
+                
+                <h3>Abstract</h3>
+                <div class="abstract-box">
+                    Aqueous batteries have played a pivotal yet fluctuating role in the evolution of electrochemical energy storage... (생략)
+                </div>
+
+                <div class="ai-recommendation">
+                    <h3 style="color: var(--ai-gold);">✨ AI Semantic Insight</h3>
+                    <p style="font-size: 14px;">이 논문은 당신이 1월에 읽은 <b>"Aqueous Zinc-Ion Batteries"</b> 논문과 방법론적으로 85% 유사합니다.</p>
+                    <div style="display: flex; gap: 10px;">
+                        <div style="background: #333; padding: 10px; border-radius: 5px; flex: 1; font-size: 12px;">
+                            <b>연관 논문 1</b><br>Zinc-anode protection...
+                        </div>
+                        <div style="background: #333; padding: 10px; border-radius: 5px; flex: 1; font-size: 12px;">
+                            <b>연관 논문 2</b><br>Aqueous Electrolytes...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+</body>
+</html>

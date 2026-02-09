@@ -2,6 +2,7 @@
 
 import html
 import os
+import threading
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -17,6 +18,7 @@ from paperbot.services.crossref_service import CrossrefService
 from paperbot.services.export_service import MarkdownExporter
 from paperbot.services.feed_service import FeedService
 from paperbot.services.openalex_service import get_paper_info as openalex_get_paper_info
+from paperbot.services.ranking_service import RankingService
 
 
 # Global state for services
@@ -27,6 +29,14 @@ class AppState:
     feed_service: FeedService
     exporter: MarkdownExporter
     fetch_status: dict = {"running": False, "message": "", "complete": False}
+    # AI ranking
+    ranker: Optional[RankingService] = None
+    _ranking_scores: dict = {}       # paper_id → match %
+    _ranking_top_ids: set = set()    # top-5 paper IDs
+    _ranking_computed: bool = False
+    _ranking_computing: bool = False
+    # Ranking progress toast state
+    ranking_status: dict = {"phase": "idle", "message": ""}
 
 
 state = AppState()
@@ -44,6 +54,13 @@ async def lifespan(app: FastAPI):
     )
     state.exporter = MarkdownExporter(state.settings.export_dir)
     state.fetch_status = {"running": False, "message": "", "complete": False}
+    # AI ranking service (models loaded lazily on first use)
+    state.ranker = RankingService()
+    state._ranking_scores = {}
+    state._ranking_top_ids = set()
+    state._ranking_computed = False
+    state._ranking_computing = False
+    state.ranking_status = {"phase": "idle", "message": ""}
     yield
 
 
@@ -77,6 +94,95 @@ templates.env.filters["format_read_date"] = format_read_date
 templates.env.filters["date_key"] = get_date_key
 
 app = FastAPI(lifespan=lifespan)
+
+
+# ============================================================================
+# AI Ranking Helpers
+# ============================================================================
+
+
+def _compute_rankings() -> None:
+    """Compute AI match scores for NEW papers against the READ library.
+
+    Heavy (model inference); always call from a background thread.
+    Updates ``state.ranking_status`` at each phase so the frontend can
+    show progress toasts via polling.
+    """
+    from paperbot.services.ranking_service import BI_ENCODER_MODEL, CROSS_ENCODER_MODEL
+
+    try:
+        new_papers = state.repo.find_by_status("new", limit=200, sort_by="date", order="desc")
+        read_papers = state.repo.find_by_status("read", limit=500)
+
+        if not read_papers or not new_papers:
+            state._ranking_scores = {}
+            state._ranking_top_ids = set()
+            state._ranking_computed = True
+            state.ranking_status = {"phase": "idle", "message": ""}
+            return
+
+        # Phase: model download / loading
+        missing = state.ranker.needs_download()
+        if missing:
+            for name in missing:
+                state.ranking_status = {
+                    "phase": "downloading",
+                    "message": f'"{name}" 모델 다운로드 중…',
+                }
+                # Accessing the property triggers the download
+                if "reranker" in name:
+                    _ = state.ranker.cross_encoder
+                else:
+                    _ = state.ranker.bi_encoder
+        else:
+            # Models cached — still need to load into RAM on first call
+            if state.ranker._bi_encoder is None or state.ranker._cross_encoder is None:
+                state.ranking_status = {
+                    "phase": "loading",
+                    "message": "AI 모델 로딩 중…",
+                }
+                _ = state.ranker.bi_encoder
+                _ = state.ranker.cross_encoder
+
+        # Phase: scoring
+        state.ranking_status = {
+            "phase": "scoring",
+            "message": f"{len(new_papers)}개 논문 AI 매칭 점수 계산 중…",
+        }
+
+        ranked = state.ranker.rank(new_papers, read_papers, top_k_bi=100)
+        state._ranking_scores = {r.paper.id: r.score for r in ranked}
+        top5 = ranked[:5]
+        state._ranking_top_ids = {r.paper.id for r in top5}
+        state._ranking_computed = True
+
+        # Phase: done (keep for a few seconds so frontend can poll it)
+        state.ranking_status = {
+            "phase": "done",
+            "message": f"{len(ranked)}개 논문 AI 매칭 완료",
+        }
+    except Exception as e:
+        print(f"[PaperBot] AI ranking failed: {e}")
+        state.ranking_status = {"phase": "error", "message": f"AI 랭킹 오류: {e}"}
+    finally:
+        state._ranking_computing = False
+
+
+def _start_ranking_bg() -> None:
+    """Kick off ranking computation in a daemon thread (non-blocking)."""
+    if state._ranking_computing:
+        return
+    state._ranking_computing = True
+    threading.Thread(target=_compute_rankings, daemon=True).start()
+
+
+def _invalidate_rankings() -> None:
+    """Clear cached rankings (call when library or new-paper set changes)."""
+    state._ranking_scores = {}
+    state._ranking_top_ids = set()
+    state._ranking_computed = False
+    if state.ranker:
+        state.ranker.invalidate_cache()
 
 
 # ============================================================================
@@ -210,9 +316,26 @@ async def papers_new(
     if date_from or date_to:
         papers = _filter_by_date(papers, date_from or None, date_to or None, "published")
     
+    # --- AI Ranking (badges only, no re-sort) ---
+    scores: dict = {}
+    top_ids: set = set()
+    if state._ranking_computed and state._ranking_scores:
+        scores = state._ranking_scores
+        top_ids = state._ranking_top_ids
+    elif not state._ranking_computing:
+        # Kick off background computation so next reload has scores
+        _start_ranking_bg()
+    
     response = templates.TemplateResponse(
         "partials/paper_list.html",
-        {"request": request, "papers": papers, "tab": "new", "empty_message": "새로운 논문이 없습니다. Fetch New 버튼을 클릭하세요."},
+        {
+            "request": request,
+            "papers": papers,
+            "tab": "new",
+            "empty_message": "새로운 논문이 없습니다. Fetch New 버튼을 클릭하세요.",
+            "scores": scores,
+            "top_ids": top_ids,
+        },
     )
     response.headers["X-Paper-Count"] = str(len(papers))
     return response
@@ -400,9 +523,20 @@ async def paper_detail(request: Request, paper_id: int):
         return HTMLResponse("<div class='p-8 text-center text-content-muted'>논문을 찾을 수 없습니다.</div>")
     
     authors_list = _parse_authors(paper.authors)
+
+    # AI match score (may be None if not yet computed)
+    ai_score = state._ranking_scores.get(paper_id) if state._ranking_computed else None
+    ai_is_top = paper_id in state._ranking_top_ids if state._ranking_computed else False
+
     return templates.TemplateResponse(
         "partials/detail.html",
-        {"request": request, "paper": paper, "authors_list": authors_list},
+        {
+            "request": request,
+            "paper": paper,
+            "authors_list": authors_list,
+            "ai_score": ai_score,
+            "ai_is_top": ai_is_top,
+        },
     )
 
 
@@ -438,6 +572,19 @@ async def paper_detail_enrich(request: Request, paper_id: int):
             "abstract": data.get("abstract", ""),
         },
     )
+
+
+# ============================================================================
+# AI Ranking Status (polling endpoint for toast)
+# ============================================================================
+
+
+@app.get("/actions/ranking-status")
+async def ranking_status():
+    """Return current ranking progress as JSON for frontend polling."""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(state.ranking_status)
 
 
 # ============================================================================
@@ -527,6 +674,13 @@ def _do_fetch():
             }
         else:
             archived_count = len(archived_ids)
+
+            # Compute AI match scores before signalling completion
+            _invalidate_rankings()
+            state.fetch_status = {"running": True, "message": "AI 매칭 점수 계산 중...", "complete": False}
+            state._ranking_computing = True
+            _compute_rankings()
+
             state.fetch_status = {
                 "running": False,
                 "message": f"완료: {total_new}개 신규, {total_processed}개 처리됨" + (f" ({archived_count}개 아카이브됨)" if archived_count > 0 else ""),
@@ -574,7 +728,7 @@ async def export_picked(request: Request):
     
     if not picked_papers:
         return HTMLResponse(
-            """<div class="toast toast-warning toast-complete">
+            """<div class="toast toast-warning toast-auto">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                 </svg>
@@ -586,9 +740,10 @@ async def export_picked(request: Request):
         filepath = state.exporter.export(picked_papers)
         paper_ids = [p.id for p in picked_papers if p.id is not None]
         state.repo.mark_exported(paper_ids)
+        _invalidate_rankings()  # library changed → recompute next time
         
         return HTMLResponse(
-            f"""<div class="toast toast-success toast-complete">
+            f"""<div class="toast toast-success toast-auto">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
@@ -597,7 +752,7 @@ async def export_picked(request: Request):
         )
     except Exception as e:
         return HTMLResponse(
-            f"""<div class="toast toast-error toast-complete">
+            f"""<div class="toast toast-error toast-auto">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
@@ -678,7 +833,7 @@ async def undo_read(request: Request, paper_id: int):
 
     paper = state.repo.find_by_id(paper_id)
     if not paper:
-        return HTMLResponse('<div class="toast toast-error toast-complete"><span>논문을 찾을 수 없습니다.</span></div>')
+        return HTMLResponse('<div class="toast toast-error toast-auto"><span>논문을 찾을 수 없습니다.</span></div>')
 
     state.repo.undo_read(paper_id)
     title_short = (paper.title or "")[:40]
@@ -708,7 +863,7 @@ async def revert_undo_read(request: Request, paper_id: int):
 
     state.repo.revert_undo_read(paper_id)
 
-    toast_html = f"""<div class="toast toast-success toast-complete">
+    toast_html = f"""<div class="toast toast-success toast-auto">
         <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l-4-4m0 0l4-4m-4 4h11.586a2 2 0 012 2v2"></path>
         </svg>
@@ -742,6 +897,28 @@ async def unpick_all(request: Request, ids: str = Form(...)):
         return HTMLResponse('<span class="text-green-600 text-sm">선택 해제됨!</span>')
     except Exception as e:
         return HTMLResponse(f'<span class="text-red-600 text-sm">오류: {str(e)}</span>')
+
+
+# ============================================================================
+# AI Ranking Trigger
+# ============================================================================
+
+
+@app.post("/actions/rank", response_class=HTMLResponse)
+async def trigger_ranking(request: Request):
+    """Manually trigger AI ranking computation."""
+    if state._ranking_computing:
+        return HTMLResponse(
+            """<div class="toast toast-info toast-auto">
+                <span>AI 매칭 점수를 이미 계산 중입니다…</span>
+            </div>"""
+        )
+    _start_ranking_bg()
+    return HTMLResponse(
+        """<div class="toast toast-info toast-auto">
+            <span>AI 매칭 점수 계산을 시작했습니다. 잠시 후 새로고침하세요.</span>
+        </div>"""
+    )
 
 
 # ============================================================================

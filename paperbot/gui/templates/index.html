@@ -256,6 +256,86 @@
             color: var(--accent-muted);
         }
         
+        /* AI Match Badges */
+        .badge-ai-gold {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.6875rem;
+            font-weight: 700;
+            white-space: nowrap;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #ffffff;
+            box-shadow: 0 1px 3px rgba(217, 119, 6, 0.25);
+            letter-spacing: 0.01em;
+        }
+        .badge-ai-blue {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.6875rem;
+            font-weight: 700;
+            white-space: nowrap;
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+            color: #ffffff;
+            box-shadow: 0 1px 3px rgba(59, 130, 246, 0.25);
+            letter-spacing: 0.01em;
+        }
+        /* Shimmer animation for gold badge */
+        @keyframes ai-shimmer {
+            0% { background-position: 200% center; }
+            100% { background-position: -200% center; }
+        }
+        .badge-ai-gold-shimmer {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.6875rem;
+            font-weight: 700;
+            white-space: nowrap;
+            background: linear-gradient(90deg, #d97706, #fbbf24, #f59e0b, #d97706);
+            background-size: 200% auto;
+            animation: ai-shimmer 3s ease-in-out infinite;
+            color: #ffffff;
+            box-shadow: 0 1px 3px rgba(217, 119, 6, 0.3);
+            letter-spacing: 0.01em;
+        }
+        /* Detail view – slightly larger AI badge */
+        .badge-ai-gold-lg {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.8125rem;
+            font-weight: 700;
+            white-space: nowrap;
+            background: linear-gradient(90deg, #d97706, #fbbf24, #f59e0b, #d97706);
+            background-size: 200% auto;
+            animation: ai-shimmer 3s ease-in-out infinite;
+            color: #ffffff;
+            box-shadow: 0 2px 4px rgba(217, 119, 6, 0.3);
+        }
+        .badge-ai-blue-lg {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.8125rem;
+            font-weight: 700;
+            white-space: nowrap;
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+            color: #ffffff;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+        }
+        
         /* 스탯 카드 */
         .stat-card {
             background-color: var(--surface-elevated);
@@ -734,9 +814,13 @@
             gap: 0;
             pointer-events: none;
         }
-        .toast-container > * {
+        .toast-container > .toast {
             margin-bottom: 0.75rem;
             transition: margin-bottom 0.4s ease-out;
+        }
+        /* Slot wrappers: no spacing when empty, pass gap to inner toast */
+        .toast-container > [id$="-slot"] {
+            display: contents;
         }
         .toast {
             pointer-events: auto;
@@ -756,34 +840,14 @@
             to { transform: translateX(0); opacity: 1; }
         }
         @keyframes toastSlideOut {
-            0%, 83% { 
-                opacity: 1; 
-                transform: translateX(0); 
-            }
-            100% {
-                opacity: 0;
-                transform: translateX(120%);
-            }
+            from { opacity: 1; transform: translateX(0); }
+            to   { opacity: 0; transform: translateX(120%); }
         }
-        @keyframes toastCollapse {
-            from { 
-                max-height: 60px;
-                padding-top: 0.75rem;
-                padding-bottom: 0.75rem;
-                margin-bottom: 0.75rem;
-            }
-            to { 
-                max-height: 0;
-                padding-top: 0;
-                padding-bottom: 0;
-                margin-bottom: 0;
-            }
-        }
-        .toast-complete {
-            animation: 
+        /* Auto-dismiss: slideIn 0.3s → visible 5s → fadeOut 2s */
+        .toast-auto {
+            animation:
                 toastSlideIn 0.3s ease-out,
-                toastSlideOut 6s ease-out 0.3s forwards,
-                toastCollapse 0.4s ease-out 6.3s forwards;
+                toastSlideOut 2s ease-out 5s forwards;
             overflow: hidden;
         }
         .toast-info {
@@ -1270,6 +1334,82 @@
         }
         
         // ============================================
+        // Unified Toast System
+        // ============================================
+        
+        const TOAST_DISPLAY_MS = 5000;   // visible duration before fade starts
+        const TOAST_FADE_MS    = 2000;   // fade-out animation duration
+        const TOAST_TOTAL_MS   = TOAST_DISPLAY_MS + TOAST_FADE_MS;
+        
+        const TOAST_ICONS = {
+            success: '<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>',
+            info:    '<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+            warning: '<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>',
+            error:   '<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>',
+            spinner: '<svg class="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>',
+        };
+        
+        /**
+         * Show a toast notification.
+         * @param {'success'|'info'|'warning'|'error'} type    - Toast style
+         * @param {string}  message   - Text to display
+         * @param {object}  [opts]    - Options
+         * @param {boolean} [opts.persistent=false]  - If true, toast stays until dismissed
+         * @param {string}  [opts.containerId='toast-container'] - Target container element ID
+         * @param {boolean} [opts.replace=false]     - Replace container content instead of append
+         * @param {string}  [opts.icon]              - Override icon: key from TOAST_ICONS or raw HTML
+         * @param {string}  [opts.customHtml]        - Full inner HTML (overrides message+icon)
+         * @param {number}  [opts.displayMs]         - Override display duration before fade
+         * @returns {HTMLElement} The created toast element
+         */
+        function showToast(type, message, opts = {}) {
+            const {
+                persistent   = false,
+                containerId  = 'toast-container',
+                replace      = false,
+                icon         = null,
+                customHtml   = null,
+                displayMs    = TOAST_DISPLAY_MS,
+            } = opts;
+            
+            const container = document.getElementById(containerId);
+            if (!container) return null;
+            
+            const el = document.createElement('div');
+            el.className = `toast toast-${type}`;
+            el.style.animation = 'toastSlideIn 0.3s ease-out';
+            
+            const iconHtml = (icon && TOAST_ICONS[icon]) ? TOAST_ICONS[icon]
+                           : icon ? icon
+                           : (TOAST_ICONS[type] || '');
+            el.innerHTML = customHtml || `${iconHtml}<span class="text-sm">${escapeHtml(message)}</span>`;
+            
+            if (replace) {
+                container.innerHTML = '';
+                container.appendChild(el);
+            } else {
+                container.appendChild(el);
+            }
+            
+            if (!persistent) {
+                el._dismissTimer = setTimeout(() => dismissToast(el), displayMs);
+            }
+            
+            return el;
+        }
+        
+        /**
+         * Dismiss a toast with the unified fade-out animation.
+         * @param {HTMLElement} el - The toast element
+         */
+        function dismissToast(el) {
+            if (!el || !el.parentNode) return;
+            if (el._dismissTimer) { clearTimeout(el._dismissTimer); el._dismissTimer = null; }
+            el.style.animation = `toastSlideOut ${TOAST_FADE_MS}ms ease-out forwards`;
+            setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, TOAST_FADE_MS);
+        }
+        
+        // ============================================
         // Date Filter Functions
         // ============================================
         
@@ -1608,7 +1748,7 @@
                         // Clear slot after animation
                         setTimeout(() => {
                             slot.innerHTML = '';
-                        }, 6800);
+                        }, TOAST_TOTAL_MS);
                     } else if (html.includes('fetch-toast-running')) {
                         // Update message only (not replacing entire toast to avoid flicker)
                         const parser = new DOMParser();
@@ -1642,11 +1782,10 @@
             }
         });
         
-        // Clean up completed toasts after animation (for export and other toasts)
+        // Clean up auto-dismiss toasts after animation (export, rank trigger, etc.)
         document.body.addEventListener('htmx:afterSettle', function(evt) {
-            // Auto-remove completed toasts in toast-container (not in slots)
-            document.querySelectorAll('#toast-container > .toast-complete').forEach(el => {
-                setTimeout(() => el.remove(), 6800);
+            document.querySelectorAll('#toast-container > .toast-auto').forEach(el => {
+                setTimeout(() => { if (el.parentNode) el.remove(); }, TOAST_TOTAL_MS);
             });
         });
         
@@ -1655,23 +1794,19 @@
         // ============================================
         
         function revertUndoRead(paperId, btn) {
-            // Dismiss the current toast immediately
+            // Dismiss the current undo toast immediately
             const toast = btn.closest('.toast');
-            if (toast) {
-                toast.style.animation = 'toastSlideOut 0.4s ease-out forwards';
-                setTimeout(() => toast.remove(), 400);
-            }
+            if (toast) dismissToast(toast);
             
             // Call revert endpoint
             fetch('/actions/revert-undo-read/' + paperId, { method: 'POST' })
                 .then(res => res.text())
                 .then(html => {
-                    // Inject revert-success toast
+                    // Inject revert-success toast (server returns toast-auto HTML)
                     const container = document.getElementById('toast-container');
                     container.insertAdjacentHTML('beforeend', html);
-                    // Auto-remove after animation
                     const newToast = container.lastElementChild;
-                    if (newToast) setTimeout(() => newToast.remove(), 6800);
+                    if (newToast) setTimeout(() => { if (newToast.parentNode) newToast.remove(); }, TOAST_TOTAL_MS);
                     
                     // Refresh list and stats
                     loadPapers();
@@ -1680,24 +1815,111 @@
                 .catch(err => console.error('Revert undo-read failed:', err));
         }
         
-        // After undo-read HTMX response: refresh list + auto-dismiss toast
+        // After undo-read HTMX response: refresh list + auto-dismiss actionable toast
         document.body.addEventListener('htmx:afterRequest', function(evt) {
             const path = evt.detail.pathInfo.requestPath || '';
             if (path.match(/^\/actions\/undo-read\/\d+$/)) {
                 loadPapers();
-                // Auto-dismiss undo toast after 8 seconds if user didn't click 되돌리기
+                // Auto-dismiss undo toast after TOAST_DISPLAY_MS if user didn't click 되돌리기
+                // (uses longer display since it has an action button)
                 setTimeout(() => {
-                    document.querySelectorAll('#toast-container > .toast:not(.toast-complete)').forEach(el => {
-                        el.style.animation = 'toastSlideOut 0.6s ease-out forwards';
-                        setTimeout(() => el.remove(), 600);
+                    document.querySelectorAll('#toast-container > .toast:not(.toast-auto)').forEach(el => {
+                        dismissToast(el);
                     });
-                }, 8000);
+                }, TOAST_DISPLAY_MS + 3000);  // +3s extra for action toasts
             }
+        });
+        // ============================================
+        // AI Ranking Progress Toast (polling)
+        // ============================================
+        
+        let rankingPollInterval = null;
+        let rankingDoneHandled = false;
+        let rankingProgressToast = null;  // reference to persistent progress toast
+        
+        function startRankingPoll() {
+            if (rankingPollInterval) return;
+            rankingPollInterval = setInterval(pollRankingStatus, 1000);
+            pollRankingStatus();
+        }
+        
+        function stopRankingPoll() {
+            if (rankingPollInterval) {
+                clearInterval(rankingPollInterval);
+                rankingPollInterval = null;
+            }
+        }
+        
+        function pollRankingStatus() {
+            fetch('/actions/ranking-status')
+                .then(res => res.json())
+                .then(data => {
+                    const phase = data.phase;
+                    const message = data.message;
+                    const slotId = 'ranking-toast-slot';
+                    
+                    if (phase === 'idle' || phase === 'done' || phase === 'error') {
+                        stopRankingPoll();
+                        
+                        // Dismiss progress spinner if still showing
+                        if (rankingProgressToast) {
+                            dismissToast(rankingProgressToast);
+                            rankingProgressToast = null;
+                        }
+                        
+                        if (phase === 'done' && !rankingDoneHandled) {
+                            rankingDoneHandled = true;
+                            showToast('success', message, { containerId: slotId, replace: true });
+                            if (currentTab === 'new') loadPapers();
+                        } else if (phase === 'error' && !rankingDoneHandled) {
+                            rankingDoneHandled = true;
+                            showToast('error', message, { containerId: slotId, replace: true });
+                        } else if (phase === 'idle') {
+                            document.getElementById(slotId).innerHTML = '';
+                        }
+                    } else {
+                        // downloading / loading / scoring — active progress
+                        rankingDoneHandled = false;
+                        
+                        if (rankingProgressToast && rankingProgressToast.parentNode) {
+                            // Update message text only (avoid flicker)
+                            const span = rankingProgressToast.querySelector('.text-sm');
+                            if (span) span.textContent = message;
+                        } else {
+                            rankingProgressToast = showToast('info', message, {
+                                containerId: slotId,
+                                replace: true,
+                                persistent: true,
+                                icon: 'spinner',
+                            });
+                        }
+                    }
+                })
+                .catch(() => {});
+        }
+        
+        // Start polling after fetch (new cycle) or papers/new load
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            const path = evt.detail.pathInfo.requestPath || '';
+            if (path === '/actions/fetch') {
+                rankingDoneHandled = false;
+                rankingProgressToast = null;
+                startRankingPoll();
+            } else if (path.startsWith('/papers/new')) {
+                startRankingPoll();
+            }
+        });
+        
+        // Page load: check if ranking already in progress
+        document.addEventListener('DOMContentLoaded', function() {
+            startRankingPoll();
         });
     </script>
     
     <!-- Toast Container -->
     <div id="toast-container" class="toast-container">
+        <!-- Ranking progress toast slot -->
+        <div id="ranking-toast-slot"></div>
         <!-- Fetch toast slot (prevents duplicates) -->
         <div id="fetch-toast-slot"></div>
     </div>
