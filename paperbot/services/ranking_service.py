@@ -332,6 +332,63 @@ class RankingService:
         probs = 1.0 / (1.0 + np.exp(-logits))
         return probs * 100.0
 
+    # -- single-paper similarity ---------------------------------------------
+
+    def find_similar(
+        self,
+        paper: Paper,
+        library: list[Paper],
+        top_k: int = 3,
+    ) -> list[tuple[Paper, float]]:
+        """Find the most similar papers in *library* to a single *paper*.
+
+        Uses Bi-Encoder cosine similarity (fast, no Cross-Encoder).
+
+        Parameters
+        ----------
+        paper:
+            The target paper to compare against the library.
+        library:
+            Reference papers (typically ``status='read'``).
+        top_k:
+            Number of most-similar papers to return.
+
+        Returns
+        -------
+        list[tuple[Paper, float]]
+            Up to *top_k* ``(paper, similarity_pct)`` pairs sorted by
+            similarity descending.  Similarity is in [0, 100].
+            The target paper itself is excluded if present in the library.
+        """
+        if not library:
+            return []
+
+        # Reuse cached library embeddings
+        _centroid, lib_embs = self._build_library_profile(library)
+
+        # Encode the target paper
+        target_emb = self._encode([_paper_text(paper)])  # shape (1, dim)
+
+        # Pairwise cosine similarity (both sides L2-normalised)
+        sims: np.ndarray = (target_emb @ lib_embs.T).flatten()  # shape (N,)
+
+        # Exclude self (same paper.id)
+        for idx, lib_paper in enumerate(library):
+            if lib_paper.id is not None and lib_paper.id == paper.id:
+                sims[idx] = -1.0
+
+        # Top-K
+        k = min(top_k, len(library))
+        top_idx = np.argsort(sims)[::-1][:k]
+
+        results: list[tuple[Paper, float]] = []
+        for idx in top_idx:
+            pct = float(np.clip(sims[idx], 0.0, 1.0)) * 100.0
+            if pct > 0:
+                results.append((library[int(idx)], round(pct, 1)))
+
+        return results
+
     # -- cache management ----------------------------------------------------
 
     def invalidate_cache(self) -> None:

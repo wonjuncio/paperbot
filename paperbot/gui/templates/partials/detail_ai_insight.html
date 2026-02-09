@@ -1,0 +1,38 @@
+{% if similar_papers %}
+<div class="ai-insight-section">
+    <!-- Header -->
+    <div class="ai-insight-header">
+        <svg class="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0L6.4 6.4 0 8l6.4 1.6L8 16l1.6-6.4L16 8 9.6 6.4z"/>
+        </svg>
+        <span>AI Semantic Insight</span>
+    </div>
+
+    <!-- Main insight text -->
+    {% set top_paper, top_score = similar_papers[0] %}
+    <p class="ai-insight-summary">
+        이 논문은 서재의
+        <strong>"{{ top_paper.title[:60] }}{% if top_paper.title|length > 60 %}…{% endif %}"</strong>
+        논문과 <span class="ai-insight-score">{{ top_score|round(0)|int }}%</span> 유사합니다.
+    </p>
+
+    <!-- Related paper cards -->
+    <div class="ai-insight-cards">
+        {% for sim_paper, sim_score in similar_papers %}
+        <div class="ai-insight-card"
+             {% if sim_paper.id %}
+             style="cursor: pointer;"
+             hx-get="/papers/{{ sim_paper.id }}"
+             hx-target="#detail-view"
+             hx-swap="innerHTML"
+             {% endif %}>
+            <div class="ai-insight-card-score">{{ sim_score|round(0)|int }}%</div>
+            <div class="ai-insight-card-title">{{ sim_paper.title }}</div>
+            {% if sim_paper.journal %}
+            <div class="ai-insight-card-journal">{{ sim_paper.journal }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

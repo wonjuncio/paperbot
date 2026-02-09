@@ -575,6 +575,50 @@ async def paper_detail_enrich(request: Request, paper_id: int):
 
 
 # ============================================================================
+# AI Semantic Insight (lazy-loaded in detail view)
+# ============================================================================
+
+
+@app.get("/papers/{paper_id}/ai-insight", response_class=HTMLResponse)
+async def paper_ai_insight(request: Request, paper_id: int):
+    """Return AI Semantic Insight HTML fragment for a single paper.
+
+    Computes Bi-Encoder similarity between the paper and the READ library,
+    returning the top-3 most similar papers.  Lazy-loaded via HTMX.
+    """
+    paper = state.repo.find_by_id(paper_id)
+    if not paper:
+        return HTMLResponse("")
+
+    read_papers = state.repo.find_by_status("read", limit=500)
+    if not read_papers:
+        return HTMLResponse("")
+
+    # If ranker models aren't loaded yet, show a brief waiting message
+    if state.ranker is None or state.ranker._bi_encoder is None:
+        return HTMLResponse(
+            '<div class="text-sm text-content-muted py-2">AI 모델 로딩 중… 잠시 후 다시 열어주세요.</div>'
+        )
+
+    try:
+        similar = state.ranker.find_similar(paper, read_papers, top_k=3)
+    except Exception:
+        return HTMLResponse("")
+
+    if not similar:
+        return HTMLResponse("")
+
+    return templates.TemplateResponse(
+        "partials/detail_ai_insight.html",
+        {
+            "request": request,
+            "paper": paper,
+            "similar_papers": similar,  # list[tuple[Paper, float]]
+        },
+    )
+
+
+# ============================================================================
 # AI Ranking Status (polling endpoint for toast)
 # ============================================================================
 
