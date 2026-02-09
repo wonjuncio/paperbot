@@ -69,6 +69,9 @@ base_dir = os.path.dirname(__file__)
 templates = Jinja2Templates(directory=os.path.join(base_dir, "templates"))
 # 초록 등에 들어온 이스케이프된 HTML(&lt;, &gt;) 복원 후 렌더링용
 templates.env.filters["unescape_html"] = lambda s: html.unescape(s) if s else ""
+# 초록 정리: "Abstract" 접두어 제거 + LaTeX → plain text
+from paperbot.utils.text import clean_abstract
+templates.env.filters["clean_abstract"] = clean_abstract
 
 
 def format_read_date(date_str: str) -> str:
@@ -693,43 +696,54 @@ async def get_date_range(
 
 
 def _do_fetch():
-    """Background task to fetch papers."""
+    """Background task to fetch papers.
+
+    Order: fetch first → if new papers found, archive old ones → upsert new.
+    If no new papers, do nothing (old papers stay as-is).
+    """
     state.fetch_status = {"running": True, "message": "RSS 피드 수집 중...", "complete": False}
-    
+
     try:
-        archived_ids = state.repo.archive_old_new()
-        total_new = 0
-        total_processed = 0
+        # Step 1: Fetch papers into a temporary list (don't touch DB yet)
         workers = min(8, (os.cpu_count() or 2) - 1)
         workers = max(1, workers)
-        
+
+        fetched_papers: list = []
         for paper in state.feed_service.fetch_all(max_workers=workers):
+            fetched_papers.append(paper)
+
+        # Step 2: Snapshot current 'new' paper IDs before upserting
+        old_new_ids = state.repo.get_new_paper_ids()
+
+        # Step 3: Upsert fetched papers — count genuinely new ones
+        total_new = 0
+        for paper in fetched_papers:
             if state.repo.upsert(paper):
                 total_new += 1
-            total_processed += 1
-        
-        # If no new papers found, restore previously archived papers
-        if total_new == 0 and archived_ids:
-            restored = state.repo.restore_to_new(archived_ids)
+
+        # Step 4: If no new papers, do nothing — keep existing New tab as-is
+        if total_new == 0:
             state.fetch_status = {
                 "running": False,
-                "message": f"신규 논문 없음 ({restored}개 복원됨)",
+                "message": f"신규 논문 없음 (기존 목록 유지)",
                 "complete": True,
             }
-        else:
-            archived_count = len(archived_ids)
+            return
 
-            # Compute AI match scores before signalling completion
-            _invalidate_rankings()
-            state.fetch_status = {"running": True, "message": "AI 매칭 점수 계산 중...", "complete": False}
-            state._ranking_computing = True
-            _compute_rankings()
+        # Step 5: New papers found → archive old 'new' papers
+        archived_count = state.repo.archive_by_ids(old_new_ids)
 
-            state.fetch_status = {
-                "running": False,
-                "message": f"완료: {total_new}개 신규, {total_processed}개 처리됨" + (f" ({archived_count}개 아카이브됨)" if archived_count > 0 else ""),
-                "complete": True,
-            }
+        # Step 5: Compute AI match scores
+        _invalidate_rankings()
+        state.fetch_status = {"running": True, "message": "AI 매칭 점수 계산 중...", "complete": False}
+        state._ranking_computing = True
+        _compute_rankings()
+
+        state.fetch_status = {
+            "running": False,
+            "message": f"완료: {total_new}개 신규, {len(fetched_papers)}개 처리됨" + (f" ({archived_count}개 아카이브됨)" if archived_count > 0 else ""),
+            "complete": True,
+        }
     except Exception as e:
         state.fetch_status = {"running": False, "message": f"오류: {str(e)}", "complete": True}
 

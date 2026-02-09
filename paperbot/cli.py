@@ -29,15 +29,10 @@ class PaperBotCLI:
 
     def cmd_fetch(self, workers: int = 8) -> None:
         """Fetch papers from all configured feeds (Crossref calls run in parallel).
-        
-        Archives existing 'new' papers to 'archived' before fetching.
-        If no new papers are found, restores the archived papers back to 'new'.
-        """
-        # Archive old 'new' papers first
-        archived_ids = self.repo.archive_old_new()
-        if archived_ids:
-            self.ui.info(f"Archived {len(archived_ids)} old 'new' papers")
 
+        Fetches first, then archives old 'new' papers only if genuinely new
+        papers were found. If nothing new, existing 'new' tab stays as-is.
+        """
         crossref = CrossrefService(self.settings.contact_email)
         feed_service = FeedService(
             feeds_path=self.settings.feeds_path,
@@ -45,14 +40,17 @@ class PaperBotCLI:
         )
 
         feeds = load_feeds(self.settings.feeds_path)
-        total_new = 0
-        total_processed = 0
-
         for feed_config in feeds:
             name = feed_config["name"]
             self.ui.fetching(name)
 
-        # Process all papers with progress (parallel Crossref enrichment)
+        # Step 1: Snapshot current 'new' paper IDs
+        old_new_ids = self.repo.get_new_paper_ids()
+
+        # Step 2: Fetch and upsert
+        total_new = 0
+        total_processed = 0
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[bold blue]{task.description}"),
@@ -68,12 +66,17 @@ class PaperBotCLI:
                     description=f"Processed {total_processed} papers, {total_new} new",
                 )
 
-        # If no new papers found, restore previously archived papers
-        if total_new == 0 and archived_ids:
-            restored = self.repo.restore_to_new(archived_ids)
-            self.ui.info(f"No new papers found. Restored {restored} papers back to 'new'")
-        else:
-            self.ui.fetch_complete(total_new)
+        # Step 3: No new papers → do nothing, keep existing New tab
+        if total_new == 0:
+            self.ui.info("No new papers found. Existing 'new' list kept as-is.")
+            return
+
+        # Step 4: New papers found → archive old 'new' papers
+        archived_count = self.repo.archive_by_ids(old_new_ids)
+        if archived_count:
+            self.ui.info(f"Archived {archived_count} old 'new' papers")
+
+        self.ui.fetch_complete(total_new)
 
     def cmd_list(
         self,

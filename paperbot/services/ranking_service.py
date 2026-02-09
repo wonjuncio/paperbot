@@ -37,7 +37,8 @@ _MODEL_CACHE_DIR = str(_Path(__file__).resolve().parent.parent.parent / ".models
 _N_REPRESENTATIVE = 5
 
 # Max characters fed to each side of the Cross-Encoder
-_CE_MAX_LEN = 512
+# bge-reranker-v2-m3 supports up to 8192 tokens; 1024 chars ≈ 256 tokens
+_CE_MAX_LEN = 1024
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +225,39 @@ class RankingService:
         top_idx = np.argsort(sims)[::-1][:n]
         return [read_papers[int(i)] for i in top_idx]
 
+    # -- pairwise similarity (optimised) ------------------------------------
+
+    @staticmethod
+    def _pairwise_max_sim(
+        query_embs: np.ndarray,
+        lib_embs: np.ndarray,
+        chunk_size: int = 256,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Compute max cosine similarity of each query against all lib papers.
+
+        Uses chunked matrix multiply to bound peak memory at
+        ``chunk_size * N_lib * sizeof(float32)`` instead of
+        ``N_query * N_lib * sizeof(float32)``.
+
+        Returns
+        -------
+        max_sims : ndarray, shape (N_query,)
+            Best cosine similarity for each query paper.
+        best_idx : ndarray, shape (N_query,)
+            Index (into *lib_embs*) of the best-matching library paper.
+        """
+        n = query_embs.shape[0]
+        max_sims = np.empty(n, dtype=np.float32)
+        best_idx = np.empty(n, dtype=np.intp)
+
+        for start in range(0, n, chunk_size):
+            end = min(start + chunk_size, n)
+            chunk = query_embs[start:end] @ lib_embs.T   # (chunk, N_lib)
+            max_sims[start:end] = chunk.max(axis=1)
+            best_idx[start:end] = chunk.argmax(axis=1)
+
+        return max_sims, best_idx
+
     # -- public API ----------------------------------------------------------
 
     def rank(
@@ -235,6 +269,25 @@ class RankingService:
     ) -> list[RankedPaper]:
         """Rank *new_papers* by relevance to the user's *read_papers* library.
 
+        Pipeline
+        --------
+        Stage 1 — Bi-Encoder (pairwise max):
+            For each new paper, compute cosine similarity against **every**
+            library paper and keep the **maximum** (best individual match).
+            This replaces the centroid-based approach for better
+            discriminative power.
+
+        Stage 2 — Cross-Encoder (enriched query):
+            For the top-K Bi-Encoder candidates, run the Cross-Encoder
+            with a rich query built from the library's 5 representative
+            papers.  Each representative is allocated ``_CE_MAX_LEN //
+            _N_REPRESENTATIVE`` characters (~200 chars at _CE_MAX_LEN=1024).
+
+        Score calibration:
+            Cross-Encoder logits are passed through sigmoid then **min-max
+            rescaled** within the batch when scores are too clustered,
+            guaranteeing meaningful differentiation.
+
         Parameters
         ----------
         new_papers:
@@ -242,15 +295,12 @@ class RankingService:
         read_papers:
             The user's library (typically ``status='read'``).
         top_k_bi:
-            Number of candidates to keep after the cheap Bi-Encoder stage
-            before handing them to the expensive Cross-Encoder.
+            Number of candidates to keep after the Bi-Encoder stage.
 
         Returns
         -------
         list[RankedPaper]
             **All** *new_papers*, sorted by match score descending.
-            Papers that went through the Cross-Encoder carry ``stage="ce"``;
-            the rest carry ``stage="bi"``.
         """
         if not read_papers:
             return [RankedPaper(paper=p, score=0.0) for p in new_papers]
@@ -258,29 +308,34 @@ class RankingService:
         if not new_papers:
             return []
 
-        # ── Stage 1: Bi-Encoder ────────────────────────────────────────
+        # ── Stage 1: Bi-Encoder — pairwise max similarity ─────────────
         centroid, lib_embs = self._build_library_profile(read_papers)
 
         new_texts = [_paper_text(p) for p in new_papers]
         new_embs = self._encode(new_texts)
 
-        # Cosine similarity (vectors are already L2-normalised)
-        bi_scores: np.ndarray = new_embs @ centroid          # shape (N,)
+        # Best individual match per new paper (chunked for memory)
+        bi_scores, _best_lib = self._pairwise_max_sim(new_embs, lib_embs)
 
-        # Select top-K candidates
+        # O(N) partial sort — only need top-K, not full sort
         k = min(top_k_bi, len(new_papers))
-        top_idx = np.argsort(bi_scores)[::-1][:k]
+        if k < len(new_papers):
+            top_idx = np.argpartition(bi_scores, -k)[-k:]
+            # Sort only the top-K for stable ordering
+            top_idx = top_idx[np.argsort(bi_scores[top_idx])[::-1]]
+        else:
+            top_idx = np.argsort(bi_scores)[::-1]
         top_set = set(top_idx.tolist())
 
-        # ── Stage 2: Cross-Encoder ─────────────────────────────────────
+        # ── Stage 2: Cross-Encoder — enriched representative query ────
 
-        # Build a compact "research profile" query from representative papers
         reps = self._representative_papers(
             read_papers, centroid, lib_embs, n=_N_REPRESENTATIVE,
         )
+        # Each representative gets a generous text allocation
+        per_rep_len = _CE_MAX_LEN // _N_REPRESENTATIVE
         query = " [SEP] ".join(
-            _paper_text(p)[:(_CE_MAX_LEN // _N_REPRESENTATIVE)]
-            for p in reps
+            _paper_text(p)[:per_rep_len] for p in reps
         )
         query = query[:_CE_MAX_LEN]
 
@@ -296,7 +351,6 @@ class RankingService:
         # ── Assemble final results ──────────────────────────────────────
         results: list[RankedPaper] = []
 
-        # Cross-Encoder–reranked papers
         for rank_pos, orig_idx in enumerate(top_idx):
             results.append(
                 RankedPaper(
@@ -306,7 +360,7 @@ class RankingService:
                 )
             )
 
-        # Remaining papers (not reranked) – fall back to Bi-Encoder score
+        # Remaining papers — Bi-Encoder pairwise-max scores
         for idx in range(len(new_papers)):
             if idx not in top_set:
                 pct = float(np.clip(bi_scores[idx], 0.0, 1.0)) * 100.0
@@ -327,10 +381,37 @@ class RankingService:
     def _logits_to_pct(logits: np.ndarray) -> np.ndarray:
         """Convert Cross-Encoder raw logits → match percentage [0, 100].
 
-        Uses sigmoid to map arbitrary logits into (0, 1), then scales to 100.
+        1. Sigmoid maps logits to (0, 1) for absolute calibration.
+        2. When sigmoid scores are clustered within a narrow band
+           (< 15 pp spread), min-max rescaling stretches them around
+           the batch mean for meaningful differentiation.
         """
-        probs = 1.0 / (1.0 + np.exp(-logits))
-        return probs * 100.0
+        if logits.size == 0:
+            return logits
+
+        probs = 1.0 / (1.0 + np.exp(-np.clip(logits, -20.0, 20.0)))
+        pct = probs * 100.0
+
+        if logits.size <= 1:
+            return pct
+
+        lo, hi = float(pct.min()), float(pct.max())
+        spread = hi - lo
+
+        if spread >= 15.0:
+            # Good natural differentiation — use sigmoid as-is
+            return pct
+
+        # Scores too clustered → rescale around batch center
+        center = float(pct.mean())
+        half_band = 15.0  # guarantee ≥30 pp total range
+        target_lo = max(center - half_band, 0.0)
+        target_hi = min(center + half_band, 100.0)
+
+        if spread < 1e-10:
+            return np.full_like(pct, center)
+
+        return target_lo + (pct - lo) / spread * (target_hi - target_lo)
 
     # -- single-paper similarity ---------------------------------------------
 

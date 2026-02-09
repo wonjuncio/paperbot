@@ -91,6 +91,118 @@ def clean_title(text: str) -> str:
     return text or "(no title)"
 
 
+# ---------------------------------------------------------------------------
+# LaTeX → plain-text conversion tables
+# ---------------------------------------------------------------------------
+
+_LATEX_GREEK = {
+    r"\alpha": "α", r"\beta": "β", r"\gamma": "γ", r"\delta": "δ",
+    r"\epsilon": "ε", r"\varepsilon": "ε", r"\zeta": "ζ", r"\eta": "η",
+    r"\theta": "θ", r"\iota": "ι", r"\kappa": "κ", r"\lambda": "λ",
+    r"\mu": "μ", r"\nu": "ν", r"\xi": "ξ", r"\pi": "π",
+    r"\rho": "ρ", r"\sigma": "σ", r"\tau": "τ", r"\upsilon": "υ",
+    r"\phi": "φ", r"\varphi": "φ", r"\chi": "χ", r"\psi": "ψ",
+    r"\omega": "ω",
+    r"\Gamma": "Γ", r"\Delta": "Δ", r"\Theta": "Θ", r"\Lambda": "Λ",
+    r"\Xi": "Ξ", r"\Pi": "Π", r"\Sigma": "Σ", r"\Phi": "Φ",
+    r"\Psi": "Ψ", r"\Omega": "Ω",
+}
+
+_LATEX_SYMBOLS = {
+    r"\times": "×", r"\cdot": "·", r"\pm": "±", r"\mp": "∓",
+    r"\leq": "≤", r"\geq": "≥", r"\neq": "≠", r"\approx": "≈",
+    r"\sim": "~", r"\equiv": "≡", r"\propto": "∝",
+    r"\infty": "∞", r"\partial": "∂", r"\nabla": "∇",
+    r"\rightarrow": "→", r"\leftarrow": "←", r"\leftrightarrow": "↔",
+    r"\Rightarrow": "⇒", r"\Leftarrow": "⇐",
+    r"\langle": "⟨", r"\rangle": "⟩",
+    r"\ldots": "…", r"\cdots": "⋯", r"\dots": "…",
+    r"\circ": "°", r"\degree": "°",
+    r"\AA": "Å", r"\angstrom": "Å",
+}
+
+# Pre-compiled regex for LaTeX commands (longest match first)
+_LATEX_CMD_RE = re.compile(
+    "|".join(
+        re.escape(k)
+        for k in sorted(
+            list(_LATEX_GREEK) + list(_LATEX_SYMBOLS),
+            key=len, reverse=True,
+        )
+    )
+)
+
+# Patterns applied in order
+_LATEX_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # \frac{a}{b} → a/b
+    (re.compile(r"\\frac\s*\{([^}]*)\}\s*\{([^}]*)\}"), r"\1/\2"),
+    # \sqrt{x} → √(x)
+    (re.compile(r"\\sqrt\s*\{([^}]*)\}"), r"√(\1)"),
+    # \text{...}, \mathrm{...}, \mathbf{...}, \textit{...}, \mathit{...}
+    (re.compile(r"\\(?:text|mathrm|mathbf|mathit|textit|textrm|operatorname)\s*\{([^}]*)\}"), r"\1"),
+    # \overline{X} → X̄  (approximate)
+    (re.compile(r"\\overline\s*\{([^}]*)\}"), r"\1"),
+    # \hat{x} → x
+    (re.compile(r"\\hat\s*\{([^}]*)\}"), r"\1"),
+    # \vec{x} → x
+    (re.compile(r"\\vec\s*\{([^}]*)\}"), r"\1"),
+    # \bar{x} → x
+    (re.compile(r"\\bar\s*\{([^}]*)\}"), r"\1"),
+    # ^{...} → superscript content
+    (re.compile(r"\^\{([^}]*)\}"), r"^\1"),
+    # _{...} → subscript content
+    (re.compile(r"_\{([^}]*)\}"), r"_\1"),
+    # Single-char super/sub: ^x → ^x, _x → _x (keep as-is)
+]
+
+
+def _latex_to_plain(text: str) -> str:
+    """Best-effort conversion of inline LaTeX math to readable plain text."""
+    # Strip math delimiters: $$...$$ and $...$
+    text = re.sub(r"\$\$(.*?)\$\$", r" \1 ", text, flags=re.DOTALL)
+    text = re.sub(r"\$(.*?)\$", r" \1 ", text)
+    # Also handle \( ... \) and \[ ... \]
+    text = re.sub(r"\\\((.*?)\\\)", r" \1 ", text)
+    text = re.sub(r"\\\[(.*?)\\\]", r" \1 ", text, flags=re.DOTALL)
+
+    # Apply structural patterns (frac, sqrt, text wrappers, etc.)
+    for pat, repl in _LATEX_PATTERNS:
+        text = pat.sub(repl, text)
+
+    # Replace Greek letters and symbols
+    text = _LATEX_CMD_RE.sub(lambda m: {**_LATEX_GREEK, **_LATEX_SYMBOLS}[m.group()], text)
+
+    # Clean up remaining backslash commands (e.g. \hspace, \quad, \,)
+    text = re.sub(r"\\(?:hspace|quad|qquad|,|;|!|:)\b\s*(?:\{[^}]*\})?", " ", text)
+    # Remove remaining unknown \commands but keep the next char
+    text = re.sub(r"\\([a-zA-Z]+)\s*", r"\1 ", text)
+
+    # Remove leftover braces
+    text = text.replace("{", "").replace("}", "")
+    # Normalise whitespace
+    text = " ".join(text.split())
+    return text
+
+
+def clean_abstract(text: str) -> str:
+    """Clean abstract text.
+
+    1. Strip leading "Abstract" / "ABSTRACT" prefix (with optional colon/dash).
+    2. Convert inline LaTeX math to readable plain-text Unicode.
+    3. Normalise whitespace.
+    """
+    if not text:
+        return text
+
+    # Strip leading "Abstract" prefix
+    text = re.sub(r"^\s*abstract[\s.:;—–-]*", "", text, flags=re.IGNORECASE).strip()
+
+    # Convert LaTeX to plain text
+    text = _latex_to_plain(text)
+
+    return text.strip()
+
+
 def parse_published(entry: dict[str, Any]) -> Optional[str]:
     """Parse publication date from RSS entry.
 

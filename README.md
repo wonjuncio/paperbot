@@ -182,9 +182,6 @@ uv run paperbot export
 <details>
 
 - READ papers export 기능 구현
-- read papers undo read 기능 구현
-- vector clustering 구현
-- Knowledge Map 구현
 
 </details>
 

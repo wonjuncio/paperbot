@@ -101,45 +101,34 @@ class PaperRepository:
             conn.commit()
             return cursor.rowcount > 0
 
-    def archive_old_new(self) -> list[int]:
-        """Archive all papers with status='new' to 'archived'.
-        
-        Called at the start of fetch to move old 'new' papers out of view.
-        
-        Returns:
-            List of paper IDs that were archived
+    def get_new_paper_ids(self) -> list[int]:
+        """Return IDs of all papers with status='new'.
+
+        Used to snapshot current 'new' papers before upserting fetched papers,
+        so they can be selectively archived later.
         """
         with self._connection() as conn:
             cursor = conn.cursor()
-            # First get IDs of papers to be archived
             cursor.execute("SELECT id FROM papers WHERE status = 'new'")
-            ids = [row[0] for row in cursor.fetchall()]
-            
-            if ids:
-                cursor.execute("UPDATE papers SET status = 'archived' WHERE status = 'new'")
-                conn.commit()
-            
-            return ids
+            return [row[0] for row in cursor.fetchall()]
 
-    def restore_to_new(self, paper_ids: list[int]) -> int:
-        """Restore archived papers back to 'new' status.
-        
-        Used when fetch returns 0 new papers to undo the archive operation.
-        
+    def archive_by_ids(self, paper_ids: list[int]) -> int:
+        """Archive specific papers by their IDs.
+
         Args:
-            paper_ids: List of paper IDs to restore
-            
+            paper_ids: List of paper IDs to move to 'archived' status.
+
         Returns:
-            Number of papers restored
+            Number of papers actually archived.
         """
         if not paper_ids:
             return 0
-            
+
         with self._connection() as conn:
             cursor = conn.cursor()
             placeholders = ",".join("?" * len(paper_ids))
             cursor.execute(
-                f"UPDATE papers SET status = 'new' WHERE id IN ({placeholders})",
+                f"UPDATE papers SET status = 'archived' WHERE id IN ({placeholders})",
                 paper_ids,
             )
             conn.commit()
