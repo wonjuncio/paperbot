@@ -1863,18 +1863,17 @@
                 .catch(err => console.error('Revert undo-read failed:', err));
         }
         
-        // After undo-read HTMX response: refresh list + auto-dismiss actionable toast
+        // After undo-read HTMX response: refresh list + auto-dismiss THAT specific toast
         document.body.addEventListener('htmx:afterRequest', function(evt) {
             const path = evt.detail.pathInfo.requestPath || '';
-            if (path.match(/^\/actions\/undo-read\/\d+$/)) {
+            const m = path.match(/^\/actions\/undo-read\/(\d+)$/);
+            if (m) {
                 loadPapers();
-                // Auto-dismiss undo toast after TOAST_DISPLAY_MS if user didn't click 되돌리기
-                // (uses longer display since it has an action button)
+                const toastId = 'undo-read-toast-' + m[1];
                 setTimeout(() => {
-                    document.querySelectorAll('#toast-container > .toast:not(.toast-auto)').forEach(el => {
-                        dismissToast(el);
-                    });
-                }, TOAST_DISPLAY_MS + 3000);  // +3s extra for action toasts
+                    const el = document.getElementById(toastId);
+                    if (el) dismissToast(el);
+                }, TOAST_DISPLAY_MS + 3000);  // 8s per individual toast
             }
         });
         // ============================================
