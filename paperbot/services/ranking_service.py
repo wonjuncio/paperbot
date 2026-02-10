@@ -46,11 +46,8 @@ from pathlib import Path as _Path
 
 _MODEL_CACHE_DIR = str(_Path(__file__).resolve().parent.parent.parent / ".models")
 
-# Max characters fed to each side of the Cross-Encoder (insight only).
-_CE_MAX_LEN = 512
 
-# Per-paper top-K read papers for CE reranking (insight only).
-_TOP_K_READ = 5
+
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +285,7 @@ class RankingService:
     def _pairwise_topk_sim(
         query_embs: np.ndarray,
         lib_embs: np.ndarray,
-        k: int = _TOP_K_READ,
+        k: int = 1,
         chunk_size: int = 256,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Per-query top-k cosine similarities against the library.
@@ -455,15 +452,14 @@ class RankingService:
     ) -> list[tuple[Paper, float]]:
         """Find the most similar READ papers to a single NEW paper.
 
-        Used by the AI Insight panel.  Pipeline:
+        Used by the AI Insight panel.  Uses **BI cosine order only**
+        (no Cross-Encoder reranking) so that:
 
-        1. **Bi-Encoder retrieval** — cosine similarity selects initial
-           ``top_k × 3`` candidates from the library (fast).
-        2. **Cross-Encoder reranking** — rescores the candidates to pick
-           the final ``top_k`` most relevant papers (accurate ordering).
-        3. **Display score** — each result shows its **BI cosine
-           similarity × 100** (genuine vector similarity, same scale as
-           the main percentile reference).
+        * Insight #1 = the read paper with the **highest cosine** to
+          this new paper = the same cosine used for the badge score.
+        * ``insight_scores[0] == badge_score`` is **guaranteed**.
+        * All scores use the library-distribution percentile (same
+          scale as badges).
 
         Parameters
         ----------
@@ -477,14 +473,18 @@ class RankingService:
         Returns
         -------
         list[tuple[Paper, float]]
-            Up to *top_k* ``(paper, cosine_pct)`` pairs sorted by CE
-            relevance.  ``cosine_pct`` is BI cosine × 100 ∈ [0, 100].
+            Up to *top_k* ``(paper, percentile_score)`` pairs sorted by
+            cosine similarity descending.  Score is in [0, 100], on the
+            **exact same scale** as the main ranking badge.
         """
         if not library:
             return []
 
         # Reuse cached incremental library embeddings
         lib_embs = self._get_lib_embeddings(library)
+
+        # Library distribution (reuse cache from rank() if available)
+        lib_dist = self._get_lib_distribution(lib_embs)
 
         # Encode the target paper
         target_emb = self._encode([_paper_text(paper)])  # shape (1, dim)
@@ -497,37 +497,21 @@ class RankingService:
             if lib_paper.id is not None and lib_paper.id == paper.id:
                 sims[idx] = -1.0
 
-        # Retrieve more candidates for CE to rerank
-        retrieve_k = min(top_k * 3, len(library))
-        top_idx = np.argsort(sims)[::-1][:retrieve_k]
+        # Top-K by BI cosine (same ordering as badge computation)
+        k = min(top_k, len(library))
+        top_idx = np.argsort(sims)[::-1][:k]
 
-        if len(top_idx) > 0:
-            # Cross-Encoder reranking for accurate ordering
-            paper_text = _paper_text(paper)[:_CE_MAX_LEN]
-            pairs = [
-                [_paper_text(library[int(i)])[:_CE_MAX_LEN], paper_text]
-                for i in top_idx
-            ]
-            try:
-                raw = self.cross_encoder.predict(
-                    pairs, show_progress_bar=False,
-                )
-                ce_logits = np.asarray(raw, dtype=np.float64)
-                # Reorder by CE relevance (descending)
-                order = np.argsort(ce_logits)[::-1][:top_k]
-            except Exception:
-                # Fallback: keep BI order
-                order = np.arange(min(top_k, len(top_idx)))
+        # Map cosine → library-distribution percentile (same as badge)
+        top_cosines = np.clip(sims[top_idx], 0.0, 1.0)
+        top_pcts = self._cosine_to_score(top_cosines, lib_dist)
 
-            results: list[tuple[Paper, float]] = []
-            for rank_pos in order:
-                orig_idx = int(top_idx[rank_pos])
-                cos_pct = round(float(np.clip(sims[orig_idx], 0.0, 1.0)) * 100.0, 1)
-                if cos_pct > 0:
-                    results.append((library[orig_idx], cos_pct))
-            return results
+        results: list[tuple[Paper, float]] = []
+        for i, idx in enumerate(top_idx):
+            pct = round(float(top_pcts[i]), 1)
+            if pct > 0:
+                results.append((library[int(idx)], pct))
 
-        return []
+        return results
 
     # -- cache management ----------------------------------------------------
 

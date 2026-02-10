@@ -251,21 +251,38 @@ def _compute_rankings() -> None:
 
 
 def _set_top_ids(scores: dict[int, float]) -> None:
-    """Compute badge tier sets from *scores* (top-N relative ranking).
+    """Compute badge tier sets from *scores* (priority system).
 
-    With raw-sigmoid CE scores the absolute values are model-dependent,
-    so badge eligibility is based on **rank** not a fixed threshold:
+    Only papers with **score ≥ 60** are eligible for badges.
+    Among eligible papers (sorted by score descending):
 
-    * **Gold shimmer** — top 5
-    * **Gold**         — ranks 6–15
-    * **Blue**         — ranks 16–30
-
-    All three sets are stored on ``state`` for template rendering.
+    * **Gold shimmer** — top 3
+    * **Gold**         — ranks 4–5, OR any paper > 85 (except top 3)
+    * **Blue**         — ranks 6–10 (only if score ≤ 85)
+    * **None**         — score < 60, or rank > 10 with score ≤ 85
     """
-    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    state._ranking_top_ids = {pid for pid, _ in ranked[:5]}
-    state._ranking_gold_ids = {pid for pid, _ in ranked[5:15]}
-    state._ranking_blue_ids = {pid for pid, _ in ranked[15:30]}
+    # Filter ≥ 70 and sort descending
+    eligible = [(pid, sc) for pid, sc in scores.items() if sc >= 60.0]
+    eligible.sort(key=lambda x: x[1], reverse=True)
+
+    shimmer: set[int] = set()
+    gold: set[int] = set()
+    blue: set[int] = set()
+
+    for rank, (pid, sc) in enumerate(eligible, 1):
+        if rank <= 3:
+            shimmer.add(pid)
+        elif sc > 85.0:
+            gold.add(pid)          # 85 초과면 순위 무관 Gold
+        elif rank <= 5:
+            gold.add(pid)
+        elif rank <= 10:
+            blue.add(pid)
+        # else: no badge
+
+    state._ranking_top_ids = shimmer
+    state._ranking_gold_ids = gold
+    state._ranking_blue_ids = blue
 
 
 def _start_ranking_bg() -> None:
