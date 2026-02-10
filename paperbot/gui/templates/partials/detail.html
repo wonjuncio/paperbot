@@ -74,8 +74,10 @@
             
             {% if ai_score is defined and ai_score is not none %}
                 {% set _detail_is_top = (ai_is_top is defined and ai_is_top) %}
-                {% if _detail_is_top or ai_score >= 90 %}
-                <span class="{% if _detail_is_top or ai_score >= 95 %}badge-ai-gold-lg{% else %}badge-ai-blue-lg{% endif %}">
+                {% set _detail_is_gold = (ai_is_gold is defined and ai_is_gold) %}
+                {% set _detail_is_blue = (ai_is_blue is defined and ai_is_blue) %}
+                {% if _detail_is_top or _detail_is_gold or _detail_is_blue %}
+                <span class="{% if _detail_is_top %}badge-ai-gold-lg{% elif _detail_is_gold %}badge-ai-gold-lg{% else %}badge-ai-blue-lg{% endif %}">
                     <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
                         <path d="M8 0L6.4 6.4 0 8l6.4 1.6L8 16l1.6-6.4L16 8 9.6 6.4z"/>
                     </svg>

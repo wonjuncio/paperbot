@@ -1,5 +1,6 @@
 """Paper repository for database operations."""
 
+import hashlib
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -55,7 +56,22 @@ class PaperRepository:
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON papers(status);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_is_picked ON papers(is_picked);")
-            
+
+            # Ranking score cache — survives restarts, validated by library_hash
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ranking_cache (
+                    paper_id INTEGER PRIMARY KEY,
+                    score REAL NOT NULL,
+                    stage TEXT NOT NULL DEFAULT 'bi',
+                    library_hash TEXT NOT NULL,
+                    computed_at TEXT NOT NULL
+                );
+            """)
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_rc_lib_hash "
+                "ON ranking_cache(library_hash);"
+            )
+
             # Migrate existing data if is_picked doesn't exist
             cursor.execute("PRAGMA table_info(papers)")
             columns = [row[1] for row in cursor.fetchall()]
@@ -563,5 +579,81 @@ class PaperRepository:
         with self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE papers SET is_picked = 0 WHERE is_picked = 1")
+            conn.commit()
+            return cursor.rowcount
+
+    # ------------------------------------------------------------------
+    # Ranking cache
+    # ------------------------------------------------------------------
+
+    def get_library_hash(self) -> str:
+        """Compute a short hash of current READ paper IDs.
+
+        The hash changes whenever the read-library composition changes
+        (papers exported or undo-read), making cached scores invalid.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id FROM papers WHERE status = 'read' ORDER BY id"
+            )
+            ids = [str(row[0]) for row in cursor.fetchall()]
+        fingerprint = ",".join(ids)
+        return hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
+
+    def load_ranking_cache(
+        self, library_hash: str
+    ) -> dict[int, tuple[float, str]]:
+        """Load cached ranking scores that match *library_hash*.
+
+        Returns:
+            Dict mapping ``paper_id → (score, stage)``.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT paper_id, score, stage FROM ranking_cache "
+                "WHERE library_hash = ?",
+                (library_hash,),
+            )
+            return {
+                row[0]: (row[1], row[2]) for row in cursor.fetchall()
+            }
+
+    def save_ranking_cache(
+        self,
+        entries: list[tuple[int, float, str]],
+        library_hash: str,
+    ) -> None:
+        """Persist ranking scores to the cache table.
+
+        Args:
+            entries: List of ``(paper_id, score, stage)`` tuples.
+            library_hash: The library fingerprint these scores belong to.
+        """
+        if not entries:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.executemany(
+                """
+                INSERT OR REPLACE INTO ranking_cache
+                    (paper_id, score, stage, library_hash, computed_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [(pid, score, stage, library_hash, now) for pid, score, stage in entries],
+            )
+            conn.commit()
+
+    def clear_ranking_cache(self) -> int:
+        """Delete **all** cached ranking scores.
+
+        Returns:
+            Number of rows deleted.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM ranking_cache")
             conn.commit()
             return cursor.rowcount

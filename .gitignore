@@ -45,6 +45,7 @@ uv.lock
 # OS
 .DS_Store
 Thumbs.db
+*.exe
 
 # Project specific
 papers.db

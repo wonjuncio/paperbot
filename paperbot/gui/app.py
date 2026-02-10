@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from paperbot import __version__
 from paperbot.config import Settings
 from paperbot.database.repository import PaperRepository
 from paperbot.models.paper import Paper
@@ -32,7 +33,9 @@ class AppState:
     # AI ranking
     ranker: Optional[RankingService] = None
     _ranking_scores: dict = {}       # paper_id → match %
-    _ranking_top_ids: set = set()    # top-5 paper IDs
+    _ranking_top_ids: set = set()    # gold shimmer (top 5)
+    _ranking_gold_ids: set = set()   # gold (ranks 6–15)
+    _ranking_blue_ids: set = set()   # blue (ranks 16–30)
     _ranking_computed: bool = False
     _ranking_computing: bool = False
     # Ranking progress toast state
@@ -54,13 +57,17 @@ async def lifespan(app: FastAPI):
     )
     state.exporter = MarkdownExporter(state.settings.export_dir)
     state.fetch_status = {"running": False, "message": "", "complete": False}
-    # AI ranking service (models loaded lazily on first use)
+    # AI ranking service
     state.ranker = RankingService()
     state._ranking_scores = {}
     state._ranking_top_ids = set()
+    state._ranking_gold_ids = set()
+    state._ranking_blue_ids = set()
     state._ranking_computed = False
     state._ranking_computing = False
     state.ranking_status = {"phase": "idle", "message": ""}
+    # Pre-load AI models into RAM in a background thread (non-blocking)
+    threading.Thread(target=_preload_models, daemon=True).start()
     yield
 
 
@@ -104,65 +111,137 @@ app = FastAPI(lifespan=lifespan)
 # ============================================================================
 
 
+def _preload_models() -> None:
+    """Pre-load AI models into RAM at startup (background thread).
+
+    Only loads the Bi-Encoder (used for ranking).  Cross-Encoder is
+    loaded lazily when the user first views the AI Insight panel.
+    """
+    try:
+        state.ranking_status = {
+            "phase": "loading",
+            "message": "AI 모델 로딩 중…",
+        }
+        _ = state.ranker.bi_encoder
+        state.ranking_status = {"phase": "idle", "message": ""}
+    except Exception as e:
+        print(f"[PaperBot] Model pre-load failed: {e}")
+        state.ranking_status = {"phase": "idle", "message": ""}
+
+
 def _compute_rankings() -> None:
     """Compute AI match scores for NEW papers against the READ library.
 
-    Heavy (model inference); always call from a background thread.
-    Updates ``state.ranking_status`` at each phase so the frontend can
-    show progress toasts via polling.
-    """
-    from paperbot.services.ranking_service import BI_ENCODER_MODEL, CROSS_ENCODER_MODEL
+    Score = library-distribution percentile of each new paper's best
+    cosine similarity to any read paper.  No Cross-Encoder inference.
 
+    Uses a persistent DB cache keyed by ``library_hash`` so that:
+
+    * **Restart** → scores loaded from cache; no model inference.
+    * **New papers added (library unchanged)** → only uncached scored.
+    * **Library changed** → hash mismatch forces full recomputation.
+
+    Always call from a background thread.
+    """
     try:
-        new_papers = state.repo.find_by_status("new", limit=200, sort_by="date", order="desc")
-        read_papers = state.repo.find_by_status("read", limit=500)
+        new_papers = state.repo.find_by_status("new", limit=500, sort_by="date", order="desc")
+        read_papers = state.repo.find_by_status("read", limit=5000)
 
         if not read_papers or not new_papers:
             state._ranking_scores = {}
             state._ranking_top_ids = set()
+            state._ranking_gold_ids = set()
+            state._ranking_blue_ids = set()
             state._ranking_computed = True
             state.ranking_status = {"phase": "idle", "message": ""}
             return
 
-        # Phase: model download / loading
+        # ── Check persistent cache ────────────────────────────────────
+        library_hash = f"{__version__}:{state.repo.get_library_hash()}"
+        cached = state.repo.load_ranking_cache(library_hash)
+
+        new_paper_ids = {p.id for p in new_papers}
+        cached_hits = {
+            pid: score_stage
+            for pid, score_stage in cached.items()
+            if pid in new_paper_ids
+        }
+        uncached_papers = [p for p in new_papers if p.id not in cached_hits]
+
+        if not uncached_papers:
+            # ✓ Full cache hit — all scores are percentile-based (uniform)
+            all_scores: dict[int, float] = {
+                pid: score for pid, (score, _stage) in cached_hits.items()
+            }
+            state._ranking_scores = all_scores
+            _set_top_ids(all_scores)
+            state._ranking_computed = True
+            state.ranking_status = {
+                "phase": "done",
+                "message": f"캐시에서 {len(cached_hits)}개 논문 점수 로드 완료",
+            }
+            return
+
+        # ── Load Bi-Encoder (CE not needed for ranking) ───────────────
         missing = state.ranker.needs_download()
-        if missing:
-            for name in missing:
+        bi_missing = [m for m in missing if "reranker" not in m]
+        if bi_missing:
+            for name in bi_missing:
                 state.ranking_status = {
                     "phase": "downloading",
                     "message": f'"{name}" 모델 다운로드 중…',
                 }
-                # Accessing the property triggers the download
-                if "reranker" in name:
-                    _ = state.ranker.cross_encoder
-                else:
-                    _ = state.ranker.bi_encoder
-        else:
-            # Models cached — still need to load into RAM on first call
-            if state.ranker._bi_encoder is None or state.ranker._cross_encoder is None:
-                state.ranking_status = {
-                    "phase": "loading",
-                    "message": "AI 모델 로딩 중…",
-                }
                 _ = state.ranker.bi_encoder
-                _ = state.ranker.cross_encoder
+        elif state.ranker._bi_encoder is None:
+            state.ranking_status = {
+                "phase": "loading",
+                "message": "AI 모델 로딩 중…",
+            }
+            _ = state.ranker.bi_encoder
 
-        # Phase: scoring
+        # ── Incremental scoring (only uncached papers) ────────────────
+        n_cached = len(cached_hits)
+        n_uncached = len(uncached_papers)
+        msg_prefix = (
+            f"{n_uncached}개 신규 논문"
+            if n_cached
+            else f"{n_uncached}개 논문"
+        )
         state.ranking_status = {
             "phase": "scoring",
-            "message": f"{len(new_papers)}개 논문 AI 매칭 점수 계산 중…",
+            "message": f"{msg_prefix} AI 매칭 점수 계산 중…",
         }
 
-        ranked = state.ranker.rank(new_papers, read_papers, top_k_bi=100)
-        state._ranking_scores = {r.paper.id: r.score for r in ranked}
-        top5 = ranked[:5]
-        state._ranking_top_ids = {r.paper.id for r in top5}
+        # Library distribution may need recomputation when library
+        # changes; invalidate so rank() recomputes from current embs.
+        state.ranker._lib_dist = None
+
+        ranked = state.ranker.rank(uncached_papers, read_papers)
+
+        # Persist newly computed scores
+        new_entries = [
+            (r.paper.id, r.score, r.stage) for r in ranked if r.paper.id is not None
+        ]
+        state.repo.save_ranking_cache(new_entries, library_hash)
+
+        # ── Merge cached + newly computed ─────────────────────────────
+        all_scores = {
+            pid: score for pid, (score, _stage) in cached_hits.items()
+        }
+        for r in ranked:
+            if r.paper.id is not None:
+                all_scores[r.paper.id] = r.score
+
+        state._ranking_scores = all_scores
+        _set_top_ids(all_scores)
         state._ranking_computed = True
 
-        # Phase: done (keep for a few seconds so frontend can poll it)
         state.ranking_status = {
             "phase": "done",
-            "message": f"{len(ranked)}개 논문 AI 매칭 완료",
+            "message": (
+                f"{n_uncached}개 논문 AI 매칭 완료"
+                + (f" (캐시 {n_cached}개 재사용)" if n_cached else "")
+            ),
         }
     except Exception as e:
         print(f"[PaperBot] AI ranking failed: {e}")
@@ -171,21 +250,58 @@ def _compute_rankings() -> None:
         state._ranking_computing = False
 
 
+def _set_top_ids(scores: dict[int, float]) -> None:
+    """Compute badge tier sets from *scores* (top-N relative ranking).
+
+    With raw-sigmoid CE scores the absolute values are model-dependent,
+    so badge eligibility is based on **rank** not a fixed threshold:
+
+    * **Gold shimmer** — top 5
+    * **Gold**         — ranks 6–15
+    * **Blue**         — ranks 16–30
+
+    All three sets are stored on ``state`` for template rendering.
+    """
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    state._ranking_top_ids = {pid for pid, _ in ranked[:5]}
+    state._ranking_gold_ids = {pid for pid, _ in ranked[5:15]}
+    state._ranking_blue_ids = {pid for pid, _ in ranked[15:30]}
+
+
 def _start_ranking_bg() -> None:
-    """Kick off ranking computation in a daemon thread (non-blocking)."""
+    """Kick off ranking computation in a daemon thread (non-blocking).
+
+    Sets ``ranking_status`` to ``"starting"`` **before** spawning the
+    thread so the frontend polling sees a non-idle phase immediately
+    and keeps the spinner toast alive.
+    """
     if state._ranking_computing:
         return
     state._ranking_computing = True
+    state.ranking_status = {
+        "phase": "starting",
+        "message": "AI 매칭 준비 중…",
+    }
     threading.Thread(target=_compute_rankings, daemon=True).start()
 
 
 def _invalidate_rankings() -> None:
-    """Clear cached rankings (call when library or new-paper set changes)."""
+    """Clear in-memory ranking state.
+
+    The persistent DB cache (``ranking_cache`` table) is **preserved**.
+    Its validity is checked at computation time via ``library_hash``:
+    if the READ library changed, the hash won't match and the cache is
+    naturally bypassed.  This means a restart or invalidation does NOT
+    require wiping the on-disk cache.
+    """
     state._ranking_scores = {}
     state._ranking_top_ids = set()
+    state._ranking_gold_ids = set()
+    state._ranking_blue_ids = set()
     state._ranking_computed = False
-    if state.ranker:
-        state.ranker.invalidate_cache()
+    # NOTE: Do NOT call ranker.invalidate_cache() here.
+    # Library changes are handled incrementally by _get_lib_embeddings();
+    # invalidate_cache() would wipe all persisted embeddings needlessly.
 
 
 # ============================================================================
@@ -205,6 +321,7 @@ async def index(request: Request):
             "stats": stats,
             "journals": journals,
             "active_tab": "new",
+            "version": __version__,
         },
     )
 
@@ -319,12 +436,19 @@ async def papers_new(
     if date_from or date_to:
         papers = _filter_by_date(papers, date_from or None, date_to or None, "published")
     
-    # --- AI Ranking (badges only, no re-sort) ---
+    # --- AI Ranking ---
     scores: dict = {}
     top_ids: set = set()
+    gold_ids: set = set()
+    blue_ids: set = set()
     if state._ranking_computed and state._ranking_scores:
         scores = state._ranking_scores
         top_ids = state._ranking_top_ids
+        gold_ids = state._ranking_gold_ids
+        blue_ids = state._ranking_blue_ids
+        # Sort by AI score descending so the most relevant papers
+        # (and their badges) appear at the top of the list.
+        papers.sort(key=lambda p: scores.get(p.id, -1), reverse=True)
     elif not state._ranking_computing:
         # Kick off background computation so next reload has scores
         _start_ranking_bg()
@@ -338,6 +462,8 @@ async def papers_new(
             "empty_message": "새로운 논문이 없습니다. Fetch New 버튼을 클릭하세요.",
             "scores": scores,
             "top_ids": top_ids,
+            "gold_ids": gold_ids,
+            "blue_ids": blue_ids,
         },
     )
     response.headers["X-Paper-Count"] = str(len(papers))
@@ -530,6 +656,8 @@ async def paper_detail(request: Request, paper_id: int):
     # AI match score (may be None if not yet computed)
     ai_score = state._ranking_scores.get(paper_id) if state._ranking_computed else None
     ai_is_top = paper_id in state._ranking_top_ids if state._ranking_computed else False
+    ai_is_gold = paper_id in state._ranking_gold_ids if state._ranking_computed else False
+    ai_is_blue = paper_id in state._ranking_blue_ids if state._ranking_computed else False
 
     return templates.TemplateResponse(
         "partials/detail.html",
@@ -539,6 +667,8 @@ async def paper_detail(request: Request, paper_id: int):
             "authors_list": authors_list,
             "ai_score": ai_score,
             "ai_is_top": ai_is_top,
+            "ai_is_gold": ai_is_gold,
+            "ai_is_blue": ai_is_blue,
         },
     )
 
@@ -586,14 +716,16 @@ async def paper_detail_enrich(request: Request, paper_id: int):
 async def paper_ai_insight(request: Request, paper_id: int):
     """Return AI Semantic Insight HTML fragment for a single paper.
 
-    Computes Bi-Encoder similarity between the paper and the READ library,
-    returning the top-3 most similar papers.  Lazy-loaded via HTMX.
+    Uses Bi-Encoder to retrieve candidates, then **Cross-Encoder** to
+    rerank and pick the most relevant READ papers.  Displayed scores
+    are BI cosine similarity × 100 (genuine vector similarity).
+    Lazy-loaded via HTMX.
     """
     paper = state.repo.find_by_id(paper_id)
     if not paper:
         return HTMLResponse("")
 
-    read_papers = state.repo.find_by_status("read", limit=500)
+    read_papers = state.repo.find_by_status("read", limit=5000)
     if not read_papers:
         return HTMLResponse("")
 

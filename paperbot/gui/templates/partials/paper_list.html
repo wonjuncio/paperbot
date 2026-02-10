@@ -47,8 +47,10 @@
                 {% if scores is defined and scores and paper.id in scores %}
                     {% set _score = scores.get(paper.id) %}
                     {% set _is_top = (top_ids is defined and top_ids and paper.id in top_ids) %}
-                    {% if _is_top or (_score is not none and _score >= 90) %}
-                        <span class="{% if _is_top %}badge-ai-gold-shimmer{% elif _score >= 95 %}badge-ai-gold{% else %}badge-ai-blue{% endif %} flex-shrink-0" title="AI Match Score">
+                    {% set _is_gold = (gold_ids is defined and gold_ids and paper.id in gold_ids) %}
+                    {% set _is_blue = (blue_ids is defined and blue_ids and paper.id in blue_ids) %}
+                    {% if _is_top or _is_gold or _is_blue %}
+                        <span class="{% if _is_top %}badge-ai-gold-shimmer{% elif _is_gold %}badge-ai-gold{% else %}badge-ai-blue{% endif %} flex-shrink-0" title="AI Match Score">
                             {{ _score|round(0)|int }}% match
                         </span>
                     {% endif %}

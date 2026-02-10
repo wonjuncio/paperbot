@@ -182,6 +182,7 @@ uv run paperbot export
 <details>
 
 - READ papers export 기능 구현
+- sort dropdown menu (ai matching score for new paper)
 
 </details>
 
