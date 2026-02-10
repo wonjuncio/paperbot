@@ -1,7 +1,10 @@
 """Text processing utilities for DOI extraction and title cleaning."""
 
+import html
 import re
 from typing import Any, Optional
+
+from bs4 import BeautifulSoup
 
 # DOI regex pattern: 10.XXXX/... format
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b", re.IGNORECASE)
@@ -184,15 +187,31 @@ def _latex_to_plain(text: str) -> str:
     return text
 
 
+def _strip_mathml_to_text(text: str) -> str:
+    """Remove MathML blocks (<math>, <mml:math>) so only plain text remains."""
+    soup = BeautifulSoup(text, "html.parser")
+    for math_tag in soup.find_all(["math", "mml:math"]):
+        math_tag.decompose()
+    body = soup.find("body")
+    if body:
+        return body.decode_contents()
+    # Fragment without body (e.g. parser difference)
+    return str(soup)
+
+
 def clean_abstract(text: str) -> str:
     """Clean abstract text.
 
-    1. Strip leading "Abstract" / "ABSTRACT" prefix (with optional colon/dash).
-    2. Convert inline LaTeX math to readable plain-text Unicode.
-    3. Normalise whitespace.
+    1. Strip MathML blocks and replace with their text content (e.g. b=1/2⟨111⟩).
+    2. Strip leading "Abstract" / "ABSTRACT" prefix (with optional colon/dash).
+    3. Convert inline LaTeX math to readable plain-text Unicode.
+    4. Normalise whitespace.
     """
     if not text:
         return text
+
+    # Remove MathML tags
+    text = _strip_mathml_to_text(text)
 
     # Strip leading "Abstract" prefix
     text = re.sub(r"^\s*abstract[\s.:;—–-]*", "", text, flags=re.IGNORECASE).strip()

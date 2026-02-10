@@ -29,7 +29,7 @@ feeds:
 
   - name: "APL Machine Learning - Latest Articles"
     url: "https://rss.scitation.org/aml"
-    issn: "2691-1280"
+    issn: "2770-9019"
 
   - name: "Modelling and Simulation in Materials Science and Engineering - Latest Articles"
     url: "https://iopscience.iop.org/journal/0965-0393/feeds/rss"
