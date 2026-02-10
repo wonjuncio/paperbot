@@ -182,10 +182,10 @@ uv run paperbot export
 <details>
 
 - READ papers export 기능 구현
-- sort dropdown menu (ai matching score for new paper)
 - db 동기화
 - 설정 창 제작 (.env 설정용, feeds.yaml 설정용 - feeds 없으면 toast 알림?)
 - LLM 연동 with api key (chatbot?)
+- clustering 가시화 for read papers
 
 </details>
 
