@@ -38,6 +38,7 @@ uv.lock
 
 # Environment
 .env
+feeds.yaml
 
 # Database
 *.db
