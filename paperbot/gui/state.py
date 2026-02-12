@@ -91,11 +91,7 @@ templates.env.filters["date_key"] = get_date_key
 
 
 def preload_models() -> None:
-    """Pre-load AI models into RAM at startup (background thread).
-
-    Only loads the Bi-Encoder (used for ranking).  Cross-Encoder is
-    loaded lazily when the user first views the AI Insight panel.
-    """
+    """Pre-load AI models into RAM at startup (background thread)."""
     try:
         state.ranking_status = {
             "phase": "loading",
@@ -112,7 +108,7 @@ def compute_rankings() -> None:
     """Compute AI match scores for NEW papers against the READ library.
 
     Score = library-distribution percentile of each new paper's best
-    cosine similarity to any read paper.  No Cross-Encoder inference.
+    cosine similarity to any read paper.
 
     Uses a persistent DB cache keyed by ``library_hash`` so that:
 
@@ -141,17 +137,15 @@ def compute_rankings() -> None:
 
         new_paper_ids = {p.id for p in new_papers}
         cached_hits = {
-            pid: score_stage
-            for pid, score_stage in cached.items()
+            pid: score
+            for pid, score in cached.items()
             if pid in new_paper_ids
         }
         uncached_papers = [p for p in new_papers if p.id not in cached_hits]
 
         if not uncached_papers:
             # Full cache hit
-            all_scores: dict[int, float] = {
-                pid: score for pid, (score, _stage) in cached_hits.items()
-            }
+            all_scores: dict[int, float] = dict(cached_hits)
             state._ranking_scores = all_scores
             _set_top_ids(all_scores)
             state._ranking_computed = True
@@ -161,11 +155,10 @@ def compute_rankings() -> None:
             }
             return
 
-        # ── Load Bi-Encoder (CE not needed for ranking) ───────────────
+        # ── Load Bi-Encoder ────────────────────────────────────────────
         missing = state.ranker.needs_download()
-        bi_missing = [m for m in missing if "reranker" not in m]
-        if bi_missing:
-            for name in bi_missing:
+        if missing:
+            for name in missing:
                 state.ranking_status = {
                     "phase": "downloading",
                     "message": f'"{name}" 모델 다운로드 중…',
@@ -191,22 +184,21 @@ def compute_rankings() -> None:
             "message": f"{msg_prefix} AI 매칭 점수 계산 중…",
         }
 
-        # Library distribution may need recomputation when library
-        # changes; invalidate so rank() recomputes from current embs.
+        # Library distribution & centroid may need recomputation when
+        # library changes; invalidate so rank() recomputes.
         state.ranker._lib_dist = None
+        state.ranker._centroid = None
 
         ranked = state.ranker.rank(uncached_papers, read_papers)
 
         # Persist newly computed scores
         new_entries = [
-            (r.paper.id, r.score, r.stage) for r in ranked if r.paper.id is not None
+            (r.paper.id, r.score) for r in ranked if r.paper.id is not None
         ]
         state.repo.save_ranking_cache(new_entries, library_hash)
 
         # ── Merge cached + newly computed ─────────────────────────────
-        all_scores = {
-            pid: score for pid, (score, _stage) in cached_hits.items()
-        }
+        all_scores = dict(cached_hits)
         for r in ranked:
             if r.paper.id is not None:
                 all_scores[r.paper.id] = r.score
@@ -230,33 +222,24 @@ def compute_rankings() -> None:
 
 
 def _set_top_ids(scores: dict[int, float]) -> None:
-    """Compute badge tier sets from *scores* (priority system).
+    """Compute badge tier sets from *scores* (score-only thresholds).
 
-    Only papers with **score >= 60** are eligible for badges.
-    Among eligible papers (sorted by score descending):
-
-    * **Gold shimmer** — top 3
-    * **Gold**         — ranks 4–5, OR any paper > 85 (except top 3)
-    * **Blue**         — ranks 6–10 (only if score <= 85)
-    * **None**         — score < 60, or rank > 10 with score <= 85
+    * **Gold shimmer** — score >= 90
+    * **Gold**         — 80 <= score < 90
+    * **Blue**         — 75 <= score < 80
+    * **None**         — score < 75
     """
-    eligible = [(pid, sc) for pid, sc in scores.items() if sc >= 60.0]
-    eligible.sort(key=lambda x: x[1], reverse=True)
-
     shimmer: set[int] = set()
     gold: set[int] = set()
     blue: set[int] = set()
 
-    for rank, (pid, sc) in enumerate(eligible, 1):
-        if rank <= 3:
+    for pid, sc in scores.items():
+        if sc >= 90.0:
             shimmer.add(pid)
-        elif sc > 85.0:
-            gold.add(pid)          # 85 초과면 순위 무관 Gold
-        elif rank <= 5:
+        elif sc >= 80.0:
             gold.add(pid)
-        elif rank <= 10:
+        elif sc >= 75.0:
             blue.add(pid)
-        # else: no badge
 
     state._ranking_top_ids = shimmer
     state._ranking_gold_ids = gold

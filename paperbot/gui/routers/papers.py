@@ -343,10 +343,9 @@ async def paper_detail_enrich(request: Request, paper_id: int):
 async def paper_ai_insight(request: Request, paper_id: int):
     """Return AI Semantic Insight HTML fragment for a single paper.
 
-    Uses Bi-Encoder to retrieve candidates, then **Cross-Encoder** to
-    rerank and pick the most relevant READ papers.  Displayed scores
-    are BI cosine similarity x 100 (genuine vector similarity).
-    Lazy-loaded via HTMX.
+    Uses Bi-Encoder cosine similarity to find the most relevant READ
+    papers.  Displayed scores use library-distribution percentile
+    (same scale as badges).  Lazy-loaded via HTMX.
     """
     paper = state.repo.find_by_id(paper_id)
     if not paper:

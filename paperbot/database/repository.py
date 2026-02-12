@@ -62,7 +62,6 @@ class PaperRepository:
                 CREATE TABLE IF NOT EXISTS ranking_cache (
                     paper_id INTEGER PRIMARY KEY,
                     score REAL NOT NULL,
-                    stage TEXT NOT NULL DEFAULT 'bi',
                     library_hash TEXT NOT NULL,
                     computed_at TEXT NOT NULL
                 );
@@ -71,6 +70,13 @@ class PaperRepository:
                 "CREATE INDEX IF NOT EXISTS idx_rc_lib_hash "
                 "ON ranking_cache(library_hash);"
             )
+
+            # Migrate: drop legacy 'stage' column from ranking_cache
+            cursor.execute("PRAGMA table_info(ranking_cache)")
+            rc_columns = [row[1] for row in cursor.fetchall()]
+            if "stage" in rc_columns:
+                cursor.execute("ALTER TABLE ranking_cache DROP COLUMN stage")
+                conn.commit()
 
             # Migrate existing data if is_picked doesn't exist
             cursor.execute("PRAGMA table_info(papers)")
@@ -603,32 +609,32 @@ class PaperRepository:
 
     def load_ranking_cache(
         self, library_hash: str
-    ) -> dict[int, tuple[float, str]]:
+    ) -> dict[int, float]:
         """Load cached ranking scores that match *library_hash*.
 
         Returns:
-            Dict mapping ``paper_id → (score, stage)``.
+            Dict mapping ``paper_id → score``.
         """
         with self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT paper_id, score, stage FROM ranking_cache "
+                "SELECT paper_id, score FROM ranking_cache "
                 "WHERE library_hash = ?",
                 (library_hash,),
             )
             return {
-                row[0]: (row[1], row[2]) for row in cursor.fetchall()
+                row[0]: row[1] for row in cursor.fetchall()
             }
 
     def save_ranking_cache(
         self,
-        entries: list[tuple[int, float, str]],
+        entries: list[tuple[int, float]],
         library_hash: str,
     ) -> None:
         """Persist ranking scores to the cache table.
 
         Args:
-            entries: List of ``(paper_id, score, stage)`` tuples.
+            entries: List of ``(paper_id, score)`` tuples.
             library_hash: The library fingerprint these scores belong to.
         """
         if not entries:
@@ -639,10 +645,10 @@ class PaperRepository:
             cursor.executemany(
                 """
                 INSERT OR REPLACE INTO ranking_cache
-                    (paper_id, score, stage, library_hash, computed_at)
-                VALUES (?, ?, ?, ?, ?)
+                    (paper_id, score, library_hash, computed_at)
+                VALUES (?, ?, ?, ?)
                 """,
-                [(pid, score, stage, library_hash, now) for pid, score, stage in entries],
+                [(pid, score, library_hash, now) for pid, score in entries],
             )
             conn.commit()
 

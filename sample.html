@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PaperBot - Pro Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background-color: #0b0f1a; color: #e2e8f0; }
+        .sidebar-bg { background-color: #111827; }
+        .card-bg { background-color: #1e293b; }
+        .accent-blue { color: #3b82f6; }
+        .ai-popup { 
+            display: none; 
+            position: fixed; 
+            bottom: 80px; 
+            right: 30px; 
+            width: 380px; 
+            height: 500px; 
+            background: #1e293b;
+            border: 1px solid #334155;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            z-index: 50;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <aside class="w-72 sidebar-bg border-r border-slate-800 flex flex-col">
+        <div class="p-6 font-bold text-2xl accent-blue tracking-tight">PaperBot</div>
+        
+        <div class="px-4 grid grid-cols-2 gap-2 mb-8">
+            <div class="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                <div class="text-[10px] text-slate-500 uppercase">New</div>
+                <div class="text-xl font-bold text-blue-400">403</div>
+            </div>
+            <div class="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                <div class="text-[10px] text-slate-500 uppercase">Read</div>
+                <div class="text-xl font-bold text-emerald-400">31</div>
+            </div>
+        </div>
+
+        <div class="px-4 mb-6">
+            <label class="text-[11px] font-semibold text-slate-500 ml-1 mb-2 block uppercase">Filters</label>
+            <div class="bg-slate-900 border border-slate-700 rounded-xl p-2 focus-within:border-blue-500 transition-all">
+                <div id="chipContainer" class="flex flex-wrap gap-1 mb-2">
+                    </div>
+                <div class="flex items-center">
+                    <select id="journalDropdown" class="bg-transparent text-xs text-blue-400 outline-none w-20 cursor-pointer">
+                        <option value="" disabled selected>+ Journal</option>
+                        <option value="Nature">Nature</option>
+                        <option value="npj Comp">npj Comp</option>
+                        <option value="Science">Science</option>
+                    </select>
+                    <input type="text" id="masterSearch" placeholder="Search or tag..." 
+                        class="bg-transparent text-xs w-full ml-2 outline-none text-slate-300">
+                </div>
+            </div>
+        </div>
+
+        <nav class="flex-1 px-4 space-y-1">
+            <div class="text-[11px] font-semibold text-slate-500 ml-1 mb-2 uppercase">Library</div>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 bg-blue-600/10 text-blue-400 rounded-lg border border-blue-500/20">
+                <i class="fa-solid fa-file-lines text-sm"></i> <span class="text-sm">Read Papers</span>
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:bg-slate-800 rounded-lg transition-all">
+                <i class="fa-solid fa-bookmark text-sm"></i> <span class="text-sm">Picked</span>
+            </a>
+        </nav>
+    </aside>
+
+    <main class="flex-1 flex flex-col relative bg-[#0b0f1a]">
+        <header class="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-slate-900/20">
+            <div class="flex items-center gap-4">
+                <h2 class="text-lg font-semibold">Developing a complete AI-accelerated workflow...</h2>
+            </div>
+            <div class="flex items-center gap-6">
+                <button class="text-slate-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-rotate text-sm"></i>
+                </button>
+                <button class="text-slate-400 hover:text-white transition-colors text-xl">
+                    <i class="fa-solid fa-gear"></i> </button>
+            </div>
+        </header>
+
+        <div class="p-8 flex-1 overflow-y-auto custom-scrollbar">
+            <div class="max-w-4xl mx-auto space-y-6">
+                <div class="bg-slate-800/30 border border-slate-700 p-6 rounded-2xl">
+                    <h1 class="text-3xl font-bold mb-4">Developing a complete AI-accelerated workflow for superconductor discovery</h1>
+                    <p class="text-slate-400 leading-relaxed">npj Computational Materials | 2026-01-27</p>
+                    <div class="mt-6 flex gap-2">
+                        <span class="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full text-xs border border-blue-500/20">AI Insight: 53% Similar</span>
+                        <span class="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-xs border border-emerald-500/20">Superconductor</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button onclick="toggleAI()" class="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-500 rounded-full flex items-center justify-center shadow-xl shadow-blue-900/40 transition-transform active:scale-95 z-[60]">
+            <i class="fa-solid fa-robot text-xl text-white"></i>
+        </button>
+
+        <div id="aiPopup" class="ai-popup flex flex-col">
+            <div class="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 rounded-t-2xl">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                    <span class="font-bold text-sm text-blue-400">PaperBot AI</span>
+                </div>
+                <button onclick="toggleAI()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="flex-1 p-4 overflow-y-auto text-sm text-slate-300 space-y-4 custom-scrollbar">
+                <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 self-start max-w-[80%]">
+                    안녕하세요! 읽고 계신 논문에 대해 궁금한 점이 있으신가요?
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-700">
+                <div class="relative">
+                    <input type="text" placeholder="질문을 입력하세요..." class="w-full bg-slate-900 border border-slate-700 rounded-xl py-2 px-4 pr-10 text-sm focus:border-blue-500 outline-none transition-all">
+                    <button class="absolute right-3 top-2 text-blue-500"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // AI Popup Toggle
+        function toggleAI() {
+            const popup = document.getElementById('aiPopup');
+            popup.style.display = (popup.style.display === 'flex') ? 'none' : 'flex';
+        }
+
+        // Integrated Filter Logic
+        const journalDropdown = document.getElementById('journalDropdown');
+        const masterSearch = document.getElementById('masterSearch');
+        const chipContainer = document.getElementById('chipContainer');
+
+        function createChip(label, type) {
+            const chip = document.createElement('div');
+            chip.className = `flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold border ${type === 'journal' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-slate-700 border-slate-600 text-slate-300'}`;
+            chip.innerHTML = `<span>${label}</span><i class="fa-solid fa-xmark cursor-pointer hover:text-white"></i>`;
+            
+            chip.querySelector('i').onclick = () => chip.remove();
+            chipContainer.appendChild(chip);
+        }
+
+        journalDropdown.onchange = (e) => {
+            if(e.target.value) {
+                createChip(e.target.value, 'journal');
+                e.target.value = "";
+            }
+        };
+
+        masterSearch.onkeypress = (e) => {
+            if(e.key === 'Enter' && e.target.value.trim() !== "") {
+                createChip(e.target.value.trim(), 'keyword');
+                e.target.value = "";
+            }
+        };
+    </script>
+</body>
+</html>

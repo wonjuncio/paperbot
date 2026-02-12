@@ -3,23 +3,28 @@
 Scores each NEW paper by how well it matches the user's READ library
 using **library-distribution percentile scoring**:
 
-  1) Bi-Encoder (BAAI/bge-small-en-v1.5)
-       Encodes papers → dense vectors.  For each new paper, compute
-       ``max cosine(new, read_i)`` = its best match in the library.
+  1) Bi-Encoder (allenai/specter2_base)
+       Encodes paper **titles** → dense vectors.
 
-  2) Library distribution
-       Compute the same ``max cosine`` among READ papers themselves
-       (each read paper's nearest neighbour in the library).  This
-       defines "normal similarity in my field".
+  2) Per-paper hybrid scoring
+       For each (new paper, read paper) pair, compute::
 
-  3) Percentile mapping
-       ``score = percentile_in_library_distribution(new_paper_max_cos)``
+           h_i = W_TOPK × cosine(new, read_i)
+               + W_CENT × cosine(new, library centroid)
+
+       Badge = max(h_1 … h_k) = hybrid score of the best match.
+       The centroid term anchors scores to the library's overall topic
+       direction, reducing false positives from related-but-off-topic
+       papers (e.g. "ML for drug discovery" vs "ML for materials").
+
+  3) Library distribution
+       Compute the same hybrid among READ papers themselves.
+       This defines "normal similarity in my field".
+
+  4) Percentile mapping
+       ``score = percentile_in_library_distribution(new_hybrid)``
        → 0–100.  A score of 80 means "this paper matches your library
        better than 80 % of your own papers match each other".
-
-  Cross-Encoder (BAAI/bge-reranker-v2-m3) is used **only** for the
-  AI Insight panel — reranking the top-K candidates to show the user
-  *which* read papers are most similar (evidence / explanation).
 
 Library embeddings are updated **incrementally** and **persisted**
 to disk so that restarts are instant.
@@ -38,8 +43,10 @@ from paperbot.models.paper import Paper
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-BI_ENCODER_MODEL = "BAAI/bge-small-en-v1.5"
-CROSS_ENCODER_MODEL = "BAAI/bge-reranker-v2-m3"
+BI_ENCODER_MODEL = "allenai/specter2_base"
+SIM_TOPK = 3    # top-k neighbours averaged for similarity (both lib & new)
+W_TOPK = 0.7    # weight for top-k mean cosine in hybrid score
+W_CENT = 0.3    # weight for centroid cosine in hybrid score
 
 # Local cache directory (project-root/.models/) — avoids re-downloading
 from pathlib import Path as _Path
@@ -54,13 +61,12 @@ _MODEL_CACHE_DIR = str(_Path(__file__).resolve().parent.parent.parent / ".models
 # Helpers
 # ---------------------------------------------------------------------------
 def _paper_text(paper: Paper) -> str:
-    """Build searchable text from a paper's title and abstract."""
-    parts: list[str] = []
-    if paper.title:
-        parts.append(paper.title)
-    if paper.abstract:
-        parts.append(paper.abstract)
-    return " ".join(parts).strip() or "(no content)"
+    """Build embedding text from a paper's title.
+
+    Uses title only (not abstract) so that scoring reflects *topic*
+    relevance rather than writing style or verbose detail.
+    """
+    return (paper.title or "").strip() or "(no content)"
 
 
 @dataclass
@@ -69,7 +75,6 @@ class RankedPaper:
 
     paper: Paper
     score: float          # 0–100  library-percentile match score
-    stage: str = "bi"     # always "bi" (kept for cache compat)
 
 
 # ---------------------------------------------------------------------------
@@ -80,21 +85,18 @@ class RankingService:
 
     Key design:
 
-    * **Score = percentile** — a new paper's max cosine similarity to
-      the library is compared to the library's own internal similarity
-      distribution.  Score 80 = "matches better than 80 % of your own
-      library papers match each other".
+    * **Score = percentile** — a new paper's per-paper hybrid
+      (best-match cosine + centroid) is compared to the library's
+      own internal distribution.  Score 80 = "matches better than
+      80 % of your own library papers match each other".
     * **Incremental encoding** — only newly-added read papers are encoded;
       existing embeddings are reused from an in-memory dict.
     * **Disk persistence** — embeddings + library distribution are saved
       so restarts skip all encoding.
-    * **CE for insight only** — Cross-Encoder runs on-demand when the
-      user views a paper's AI Insight panel, not during batch ranking.
     """
 
     def __init__(self) -> None:
         self._bi_encoder = None
-        self._cross_encoder = None
 
         # Incremental per-paper embedding store:  paper_id → vector
         self._emb_store: dict[int, np.ndarray] = {}
@@ -103,9 +105,10 @@ class RankingService:
         _safe_model = BI_ENCODER_MODEL.replace("/", "_")
         self._emb_path: _Path = _Path(_MODEL_CACHE_DIR) / f"lib_emb_{_safe_model}.npz"
 
-        # Library similarity distribution (sorted array of max-cosine
+        # Library similarity distribution (sorted array of hybrid cosine
         # values among read papers).  Computed once per library state.
         self._lib_dist: Optional[np.ndarray] = None
+        self._centroid: Optional[np.ndarray] = None
 
     # -- lazy model loading --------------------------------------------------
 
@@ -130,7 +133,6 @@ class RankingService:
             "sentence_transformers",
             "sentence_transformers.models",
             "sentence_transformers.SentenceTransformer",
-            "sentence_transformers.cross_encoder",
         ):
             lg = _logging.getLogger(name)
             loggers.append((lg, lg.level))
@@ -161,13 +163,11 @@ class RankingService:
         missing = []
         if not self.is_model_cached(BI_ENCODER_MODEL):
             missing.append(BI_ENCODER_MODEL)
-        if not self.is_model_cached(CROSS_ENCODER_MODEL):
-            missing.append(CROSS_ENCODER_MODEL)
         return missing
 
     @property
     def bi_encoder(self):
-        """Lazy-load the Bi-Encoder (BGE-small-en-v1.5, ~33 M params)."""
+        """Lazy-load the Bi-Encoder (SPECTER2, ~110 M params)."""
         if self._bi_encoder is None:
             from sentence_transformers import SentenceTransformer
 
@@ -181,25 +181,6 @@ class RankingService:
                     self._bi_encoder = SentenceTransformer(BI_ENCODER_MODEL)
                     self._bi_encoder.save(str(local_path))
         return self._bi_encoder
-
-    @property
-    def cross_encoder(self):
-        """Lazy-load the Cross-Encoder / Reranker (BGE-reranker-v2-m3)."""
-        if self._cross_encoder is None:
-            from sentence_transformers import CrossEncoder
-
-            local_path = _Path(_MODEL_CACHE_DIR) / CROSS_ENCODER_MODEL.replace("/", "_")
-            with self._quiet_load():
-                if local_path.exists():
-                    self._cross_encoder = CrossEncoder(
-                        str(local_path), max_length=512,
-                    )
-                else:
-                    self._cross_encoder = CrossEncoder(
-                        CROSS_ENCODER_MODEL, max_length=512,
-                    )
-                    self._cross_encoder.save(str(local_path))
-        return self._cross_encoder
 
     # -- encoding helpers ----------------------------------------------------
 
@@ -279,24 +260,42 @@ class RankingService:
         # Build matrix in read_papers order (index-consistent)
         return np.stack([self._emb_store[p.id] for p in read_papers])
 
+    # -- centroid ------------------------------------------------------------
+
+    @staticmethod
+    def _compute_centroid(embs: np.ndarray) -> np.ndarray:
+        """Compute L2-normalised centroid of an embedding matrix."""
+        centroid = embs.mean(axis=0)
+        norm = np.linalg.norm(centroid)
+        return centroid / norm if norm > 0 else centroid
+
+    def _get_centroid(self, lib_embs: np.ndarray) -> np.ndarray:
+        """Return (or compute + cache) the library centroid."""
+        if self._centroid is None:
+            self._centroid = self._compute_centroid(lib_embs)
+        return self._centroid
+
     # -- pairwise similarity (optimised) ------------------------------------
 
     @staticmethod
     def _pairwise_topk_sim(
         query_embs: np.ndarray,
         lib_embs: np.ndarray,
-        k: int = 1,
+        k: int = SIM_TOPK,
         chunk_size: int = 256,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Per-query top-k cosine similarities against the library.
+        """Per-query top-k **mean** cosine similarity against the library.
 
         Uses chunked matrix multiply to bound peak memory and
         ``argpartition`` for O(N_lib) top-k selection per row.
 
+        Averaging top-k (instead of taking the max) reduces score
+        inflation from a single near-duplicate in the library.
+
         Returns
         -------
-        max_sims : ndarray, shape (N_query,)
-            Best cosine similarity for each query paper.
+        topk_mean : ndarray, shape (N_query,)
+            Mean of top-k cosine similarities for each query paper.
         topk_idx : ndarray, shape (N_query, k')
             Column indices of the *k'* best-matching library papers per
             query, sorted descending.  ``k' = min(k, N_lib)``.
@@ -305,41 +304,53 @@ class RankingService:
         n_lib = lib_embs.shape[0]
         actual_k = min(k, n_lib)
 
-        max_sims = np.empty(n_q, dtype=np.float32)
+        topk_mean = np.empty(n_q, dtype=np.float32)
         topk_idx = np.empty((n_q, actual_k), dtype=np.intp)
 
         for start in range(0, n_q, chunk_size):
             end = min(start + chunk_size, n_q)
             sim = query_embs[start:end] @ lib_embs.T  # (chunk, N_lib)
 
-            max_sims[start:end] = sim.max(axis=1)
-
             if actual_k < n_lib:
                 # O(N_lib) partial sort per row — faster than full sort
                 part = np.argpartition(sim, -actual_k, axis=1)[:, -actual_k:]
+                # Gather top-k values and average
+                topk_vals = np.take_along_axis(sim, part, axis=1)
+                topk_mean[start:end] = topk_vals.mean(axis=1)
                 for i in range(end - start):
                     row_topk = part[i]
                     order = np.argsort(sim[i, row_topk])[::-1]
                     topk_idx[start + i] = row_topk[order]
             else:
                 topk_idx[start:end] = np.argsort(sim, axis=1)[:, ::-1]
+                topk_mean[start:end] = sim.mean(axis=1)
 
-        return max_sims, topk_idx
+        return topk_mean, topk_idx
 
     # -- library distribution ------------------------------------------------
 
     @staticmethod
-    def _compute_lib_distribution(lib_embs: np.ndarray) -> np.ndarray:
-        """Compute the library's internal similarity distribution.
+    def _compute_lib_distribution(
+        lib_embs: np.ndarray,
+        centroid: np.ndarray,
+    ) -> np.ndarray:
+        """Compute the library's internal hybrid similarity distribution.
 
-        For each read paper, find its **max cosine** to any *other*
-        read paper.  The sorted array of these values defines "normal
-        similarity in this field".
+        For each read paper *r*, compute::
+
+            s_match = max cosine(r, other reads)
+            s_cent  = cosine(r, centroid)
+            s_hybrid = W_TOPK * s_match + W_CENT * s_cent
+
+        The sorted array of these hybrid values defines "normal
+        similarity in my field".  The centroid term anchors scores to
+        the library's overall topic direction, reducing false positives
+        from related-but-off-topic papers.
 
         Returns
         -------
         np.ndarray
-            Sorted 1-D array of max-cosine values (ascending).
+            Sorted 1-D array of hybrid values (ascending).
             If the library has < 2 papers, returns ``[0.0]`` as a
             conservative fallback so any positive similarity scores > 0.
         """
@@ -347,16 +358,23 @@ class RankingService:
         if n < 2:
             return np.array([0.0], dtype=np.float32)
 
-        # Pairwise cosine (embeddings already L2-normalised)
+        # ── Best-match cosine (excluding self) ────────────────────────
         sim = lib_embs @ lib_embs.T            # (N, N)
         np.fill_diagonal(sim, -np.inf)          # exclude self
-        max_sims = sim.max(axis=1)              # (N,)
-        return np.sort(max_sims)
+        max_cos = sim.max(axis=1)               # (N,)
+
+        # ── Centroid cosine per read paper ─────────────────────────────
+        cent_cos = (lib_embs @ centroid).flatten()  # (N,)
+
+        # ── Hybrid ─────────────────────────────────────────────────────
+        hybrid = W_TOPK * max_cos + W_CENT * cent_cos
+        return np.sort(hybrid)
 
     def _get_lib_distribution(self, lib_embs: np.ndarray) -> np.ndarray:
         """Return (or compute + cache) the library distribution."""
         if self._lib_dist is None:
-            self._lib_dist = self._compute_lib_distribution(lib_embs)
+            centroid = self._get_centroid(lib_embs)
+            self._lib_dist = self._compute_lib_distribution(lib_embs, centroid)
         return self._lib_dist
 
     @staticmethod
@@ -364,7 +382,7 @@ class RankingService:
         cosines: np.ndarray,
         lib_dist: np.ndarray,
     ) -> np.ndarray:
-        """Map max-cosine values → 0–100 percentile scores.
+        """Map cosine values → 0–100 percentile scores.
 
         ``score[i] = 100 × (# lib values ≤ cosines[i]) / len(lib_dist)``
 
@@ -387,17 +405,15 @@ class RankingService:
 
         Pipeline
         --------
-        1. **Encode** — Bi-Encoder embeds all papers (incremental for
-           the library).
-        2. **Pairwise max cosine** — for each new paper, find its best
-           cosine similarity to any read paper.
-        3. **Library distribution** — compute ``max cosine`` among read
-           papers themselves (each paper's nearest neighbour).
-        4. **Percentile mapping** — ``score = percentile(new_max_cos,
+        1. **Encode** — Bi-Encoder embeds paper titles (incremental
+           for the library).
+        2. **Best-match cosine** — max cosine to any read paper.
+        3. **Centroid cosine** — cosine to the library centroid.
+        4. **Per-paper hybrid** — ``h_i = W_TOPK × cos_i + W_CENT × cent``.
+           Badge = max(h_1 … h_k) = hybrid of best match.
+        5. **Library distribution** — same hybrid among read papers.
+        6. **Percentile mapping** — ``score = percentile(hybrid,
            lib_distribution) × 100``.
-
-        No Cross-Encoder inference — the entire process is a single
-        matrix multiply + percentile lookup.
 
         Complexity: ``O(N_new × N_read)`` for cosine (chunked matmul),
         ``O(N_read²)`` one-time for library distribution (cached).
@@ -419,23 +435,29 @@ class RankingService:
         new_texts = [_paper_text(p) for p in new_papers]
         new_embs = self._encode(new_texts)
 
-        # ── Step 2: Max cosine per new paper ───────────────────────────
-        bi_max, _ = self._pairwise_topk_sim(new_embs, lib_embs, k=1)
+        # ── Step 2: Best-match cosine per new paper ──────────────────
+        max_cos, _ = self._pairwise_topk_sim(new_embs, lib_embs, k=1)
 
-        # ── Step 3: Library distribution ───────────────────────────────
+        # ── Step 3: Centroid cosine per new paper ─────────────────────
+        centroid = self._get_centroid(lib_embs)
+        cent_cos = (new_embs @ centroid).flatten()  # (N_new,)
+
+        # ── Step 4: Per-paper hybrid (badge = max = best match hybrid)─
+        hybrid = W_TOPK * max_cos + W_CENT * cent_cos
+
+        # ── Step 5: Library distribution (also hybrid) ────────────────
         lib_dist = self._get_lib_distribution(lib_embs)
 
-        # ── Step 4: Percentile scoring ─────────────────────────────────
-        scores = self._cosine_to_score(bi_max, lib_dist)
+        # ── Step 6: Percentile scoring ────────────────────────────────
+        scores = self._cosine_to_score(hybrid, lib_dist)
 
-        # ── Assemble results ───────────────────────────────────────────
+        # ── Assemble results ──────────────────────────────────────────
         results: list[RankedPaper] = []
         for idx, paper in enumerate(new_papers):
             results.append(
                 RankedPaper(
                     paper=paper,
                     score=round(float(scores[idx]), 1),
-                    stage="bi",
                 )
             )
 
@@ -452,14 +474,13 @@ class RankingService:
     ) -> list[tuple[Paper, float]]:
         """Find the most similar READ papers to a single NEW paper.
 
-        Used by the AI Insight panel.  Uses **BI cosine order only**
-        (no Cross-Encoder reranking) so that:
+        Used by the AI Insight panel.  Each similar paper receives a
+        **per-paper hybrid score**::
 
-        * Insight #1 = the read paper with the **highest cosine** to
-          this new paper = the same cosine used for the badge score.
-        * ``insight_scores[0] == badge_score`` is **guaranteed**.
-        * All scores use the library-distribution percentile (same
-          scale as badges).
+            h_i = W_TOPK × cos(new, read_i) + W_CENT × cos(new, centroid)
+
+        mapped through the hybrid library distribution → percentile.
+        The highest insight score (insight #1) equals the badge score.
 
         Parameters
         ----------
@@ -474,8 +495,7 @@ class RankingService:
         -------
         list[tuple[Paper, float]]
             Up to *top_k* ``(paper, percentile_score)`` pairs sorted by
-            cosine similarity descending.  Score is in [0, 100], on the
-            **exact same scale** as the main ranking badge.
+            hybrid score descending.  Score is in [0, 100].
         """
         if not library:
             return []
@@ -483,7 +503,7 @@ class RankingService:
         # Reuse cached incremental library embeddings
         lib_embs = self._get_lib_embeddings(library)
 
-        # Library distribution (reuse cache from rank() if available)
+        # Library distribution (hybrid, reuse cache from rank())
         lib_dist = self._get_lib_distribution(lib_embs)
 
         # Encode the target paper
@@ -497,13 +517,18 @@ class RankingService:
             if lib_paper.id is not None and lib_paper.id == paper.id:
                 sims[idx] = -1.0
 
-        # Top-K by BI cosine (same ordering as badge computation)
+        # Top-K by cosine (centroid is constant, so cosine order = hybrid order)
         k = min(top_k, len(library))
         top_idx = np.argsort(sims)[::-1][:k]
 
-        # Map cosine → library-distribution percentile (same as badge)
+        # Per-paper hybrid score: W_TOPK × cos_i + W_CENT × cos(new, centroid)
+        centroid = self._get_centroid(lib_embs)
+        cent_cos = float((target_emb @ centroid).flatten()[0])
         top_cosines = np.clip(sims[top_idx], 0.0, 1.0)
-        top_pcts = self._cosine_to_score(top_cosines, lib_dist)
+        top_hybrid = W_TOPK * top_cosines + W_CENT * cent_cos
+
+        # Map hybrid → percentile
+        top_pcts = self._cosine_to_score(top_hybrid, lib_dist)
 
         results: list[tuple[Paper, float]] = []
         for i, idx in enumerate(top_idx):
@@ -524,6 +549,7 @@ class RankingService:
         self._emb_store.clear()
         self._emb_loaded = False
         self._lib_dist = None
+        self._centroid = None
         if self._emb_path.exists():
             try:
                 self._emb_path.unlink()
