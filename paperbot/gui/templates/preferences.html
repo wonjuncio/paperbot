@@ -112,10 +112,10 @@
     }
 
     /* 메인 패널 */
-    .pref-main { flex: 1; display: flex; flex-direction: column; position: relative; }
+    .pref-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
     .pref-page {
-        display: none; padding: 35px; height: 100%; box-sizing: border-box;
-        overflow-y: auto; scrollbar-gutter: stable;
+        display: none; padding: 35px; padding-bottom: 35px; flex: 1; min-height: 0;
+        box-sizing: border-box; overflow-y: auto; scrollbar-gutter: stable;
     }
     .pref-page.active { display: block; }
     .pref-page::-webkit-scrollbar { width: 8px; }
@@ -243,7 +243,7 @@
 
     /* 하단 액션 바 */
     .pref-action-bar {
-        position: absolute; bottom: 0; left: 0; right: 0;
+        flex-shrink: 0;
         padding: 20px 35px; background: var(--paper-bg);
         border-top: 1px solid var(--paper-border);
         display: flex; justify-content: flex-end; gap: 12px;
@@ -292,12 +292,18 @@
         transition: 0.2s;
     }
     .pref-journal-card:hover { border-color: var(--paper-accent); transform: translateY(-2px); }
+    .pref-journal-card.delete-confirm { transform: translateY(2px); }
+    .pref-journal-card.delete-confirm:hover { border-color: rgba(239,68,68,0.5); transform: translateY(2px); }
     .pref-journal-card-main { display: flex; align-items: center; gap: 14px; min-width: 0; }
     .pref-journal-favicon { width: 24px; height: 24px; border-radius: 6px; object-fit: contain; flex-shrink: 0; background: var(--paper-favicon-bg); }
     .pref-journal-info { min-width: 0; }
     .pref-journal-info .name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
     .pref-journal-info .meta { font-size: 12px; color: var(--paper-dim); }
-    .pref-journal-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; opacity: 0; transition: opacity 0.2s; }
+    .pref-journal-right { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; height: 28px; }
+    .pref-journal-actions {
+        display: flex; align-items: center; gap: 4px;
+        opacity: 0; transition: opacity 0.2s;
+    }
     .pref-journal-card:hover .pref-journal-actions { opacity: 1; }
     .pref-jcard-edit, .pref-jcard-del {
         width: 28px; height: 28px; padding: 0; border-radius: 6px; cursor: pointer;
@@ -308,18 +314,39 @@
     .pref-jcard-edit:hover { color: var(--paper-accent); background: var(--paper-accent-bg-medium); }
     .pref-jcard-del:hover { color: #e05c5c; background: rgba(224,92,92,0.12); }
 
+    /* 저널 삭제 확인 인라인 */
+    .pref-journal-card .journal-delete-confirm {
+        display: none; align-items: center; gap: 8px;
+        animation: prefCredFadeIn 0.2s ease-out;
+    }
+    .pref-journal-card.delete-confirm { background: rgba(220,38,38,0.05); border-color: rgba(239,68,68,0.5); }
+    .pref-journal-card.delete-confirm .pref-journal-actions { display: none; }
+    .pref-journal-card.delete-confirm .journal-delete-confirm { display: flex; }
+    .pref-journal-card .journal-del-yes {
+        color: #ef4444; font-weight: 700; font-size: 12px; cursor: pointer;
+        background: none; border: none; padding: 2px 4px;
+    }
+    .pref-journal-card .journal-del-no {
+        color: var(--paper-dim); font-size: 12px; cursor: pointer;
+        background: none; border: none; padding: 2px 4px;
+    }
+    .pref-journal-card .journal-del-yes:hover { color: #dc2626; }
+    .pref-journal-card .journal-del-no:hover { color: var(--paper-text); }
+
     /* LLM 프로필 카드 */
     .pref-cred-list { display: flex; flex-direction: column; gap: 10px; }
     .pref-cred-card {
         background: var(--paper-card); border: 1px solid var(--paper-border);
         border-radius: 8px; padding: 14px 18px;
         display: flex; align-items: center; gap: 12px; flex-wrap: nowrap;
-        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s, transform 0.25s ease;
         cursor: pointer;
     }
     .pref-cred-card:hover { border-color: var(--paper-dim); box-shadow: var(--paper-card-hover-shadow); }
     .pref-cred-card.active { border-color: var(--paper-accent); background: var(--paper-accent-bg-subtle); box-shadow: var(--paper-active-shadow); }
     .pref-cred-card.active:hover { border-color: var(--paper-accent); }
+    .pref-cred-card.delete-confirm { transform: translateY(2px); }
+    .pref-cred-card.delete-confirm:hover { border-color: rgba(239,68,68,0.5); transform: translateY(2px); }
     .pref-cred-card .label {
         font-weight: 600; font-size: 13px;
         width: 120px; flex-shrink: 0;
@@ -602,11 +629,7 @@
     var credentials = [];
     var activeCredId = null;
 
-    var journals = [
-        { id: 'j1', name: 'Nature Materials', issn: '1476-4660', rss: 'https://www.nature.com/nmaterials.rss' },
-        { id: 'j2', name: 'npj Computational Materials', issn: '2057-3960', rss: 'https://www.nature.com/npjcompumats.rss' },
-        { id: 'j3', name: 'Nature Communications', issn: '2041-1723', rss: 'https://www.nature.com/ncomms.rss' }
-    ];
+    var journals = [];
 
     var modalMode = null;
     var modalEditId = null;
@@ -752,12 +775,69 @@
     // ============================================================
     // 페이지 네비게이션
     // ============================================================
+    function resetDeleteConfirmStates() {
+        document.querySelectorAll('.pref-cred-card.delete-confirm').forEach(function(c) {
+            c.classList.remove('delete-confirm');
+        });
+        document.querySelectorAll('.pref-journal-card.delete-confirm').forEach(function(c) {
+            c.classList.remove('delete-confirm');
+        });
+    }
+
     window.prefShowPage = function(pageId, navEl) {
+        resetDeleteConfirmStates();
         document.querySelectorAll('#pref-overlay .pref-page').forEach(function(p) { p.classList.remove('active'); });
         document.getElementById(pageId).classList.add('active');
         document.querySelectorAll('#pref-overlay .pref-nav').forEach(function(n) { n.classList.remove('active'); });
         navEl.classList.add('active');
     };
+
+    // ============================================================
+    // 저널 피드 (API CRUD)
+    // ============================================================
+    function fetchFeeds() {
+        fetch('/api/feeds')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                journals = (data || []).map(function(f) {
+                    return { id: f.id, name: f.name, issn: f.issn || '', rss: f.url };
+                });
+                renderJournalList();
+            })
+            .catch(function() {
+                journals = [];
+                renderJournalList();
+            });
+    }
+
+    function apiCreateFeed(name, url, issn, cb) {
+        fetch('/api/feeds', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, url: url, issn: issn })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) { if (cb) cb(data); })
+        .catch(function() {});
+    }
+
+    function apiUpdateFeed(id, name, url, issn, cb) {
+        fetch('/api/feeds/' + encodeURIComponent(id), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, url: url, issn: issn })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) { if (cb) cb(data); })
+        .catch(function() {});
+    }
+
+    function apiDeleteFeed(id, cb) {
+        fetch('/api/feeds/' + encodeURIComponent(id), { method: 'DELETE' })
+            .then(function(res) { return res.json(); })
+            .then(function(data) { if (cb) cb(data); })
+            .catch(function() {});
+    }
 
     // ============================================================
     // 이메일 (API 연동 + 포맷 검증)
@@ -954,8 +1034,8 @@
     function prefDeleteCred(id) {
         var card = document.querySelector('.pref-cred-card[data-id="' + id + '"]');
         if (card) {
-            card.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
-            card.style.transform = 'scale(0.95)';
+            card.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
+            card.style.transform = 'scale(0.97) translateY(6px)';
             card.style.opacity = '0';
         }
         apiDeleteProfile(id, function() {
@@ -971,9 +1051,10 @@
     function renderJournalList() {
         var list = document.getElementById('pref-journal-list');
         if (!list) return;
+        var idAttr = function(id) { return (id + '').replace(/"/g, '&quot;'); };
         list.innerHTML = journals.map(function(j) {
             var favicon = getFaviconUrl(j.rss);
-            return '<div class="pref-journal-card" data-id="' + j.id + '">' +
+            return '<div class="pref-journal-card" data-id="' + idAttr(j.id) + '">' +
                 '<div class="pref-journal-card-main">' +
                     (favicon ? '<img class="pref-journal-favicon" src="' + favicon + '" alt="" loading="lazy">' : '') +
                     '<div class="pref-journal-info">' +
@@ -981,19 +1062,69 @@
                         (j.issn ? '<div class="meta">ISSN: ' + j.issn.escapeHtml() + '</div>' : '') +
                     '</div>' +
                 '</div>' +
-                '<div class="pref-journal-actions">' +
-                    '<button type="button" class="pref-jcard-edit" onclick="prefOpenJournalModal(\'' + j.id + '\')" aria-label="수정">&#9998;</button>' +
-                    '<button type="button" class="pref-jcard-del" onclick="prefDeleteJournal(\'' + j.id + '\')" aria-label="삭제">&#128465;</button>' +
+                '<div class="pref-journal-right">' +
+                    '<div class="pref-journal-actions">' +
+                        '<button type="button" class="pref-jcard-edit" data-feed-id="' + idAttr(j.id) + '" aria-label="수정">&#9998;</button>' +
+                        '<button type="button" class="pref-jcard-del" data-feed-id="' + idAttr(j.id) + '" aria-label="삭제">&#128465;</button>' +
+                    '</div>' +
+                    '<div class="journal-delete-confirm">' +
+                        '<button type="button" class="journal-del-yes" data-feed-id="' + idAttr(j.id) + '">삭제</button>' +
+                        '<span style="color:var(--paper-dim);">|</span>' +
+                        '<button type="button" class="journal-del-no" data-feed-id="' + idAttr(j.id) + '">취소</button>' +
+                    '</div>' +
                 '</div>' +
             '</div>';
         }).join('');
     }
 
-    window.prefDeleteJournal = function(id) {
-        if (!confirm('이 저널을 삭제할까요?')) return;
-        journals = journals.filter(function(x) { return x.id !== id; });
-        renderJournalList();
-    };
+    // 이벤트 위임: 저널 목록 클릭 처리
+    document.getElementById('pref-journal-list').addEventListener('click', function(e) {
+        e.stopPropagation();
+
+        // 삭제 확인 → 실행
+        var yesBtn = e.target.closest('.journal-del-yes');
+        if (yesBtn && yesBtn.dataset.feedId) {
+            prefDeleteJournal(yesBtn.dataset.feedId);
+            return;
+        }
+        // 삭제 취소
+        var noBtn = e.target.closest('.journal-del-no');
+        if (noBtn) {
+            var card = noBtn.closest('.pref-journal-card');
+            if (card) card.classList.remove('delete-confirm');
+            return;
+        }
+        // 휴지통 클릭 → 삭제 확인 모드
+        var delBtn = e.target.closest('.pref-jcard-del');
+        if (delBtn && delBtn.dataset.feedId) {
+            var card = delBtn.closest('.pref-journal-card');
+            // 다른 카드의 확인 모드 해제
+            document.querySelectorAll('#pref-journal-list .pref-journal-card.delete-confirm').forEach(function(c) {
+                c.classList.remove('delete-confirm');
+            });
+            if (card) card.classList.add('delete-confirm');
+            return;
+        }
+        // 연필 클릭 → 수정
+        var editBtn = e.target.closest('.pref-jcard-edit');
+        if (editBtn && editBtn.dataset.feedId) {
+            prefOpenJournalModal(editBtn.dataset.feedId);
+            return;
+        }
+    });
+
+    function prefDeleteJournal(id) {
+        var card = document.querySelector('.pref-journal-card[data-id="' + id + '"]');
+        if (card) {
+            card.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
+            card.style.transform = 'scale(0.97) translateY(6px)';
+            card.style.opacity = '0';
+        }
+        apiDeleteFeed(id, function() {
+            journals = journals.filter(function(x) { return x.id !== id; });
+            setTimeout(function() { renderJournalList(); }, 200);
+        });
+    }
 
     // ============================================================
     // 서브 모달
@@ -1122,17 +1253,22 @@
             if (!rss) jinvalid.push('pref-journal-rss-group');
             if (jinvalid.length) { showFieldErrors(jinvalid); return; }
             if (modalEditId) {
-                var j = journals.find(function(x) { return x.id === modalEditId; });
-                if (j) { j.name = jname; j.issn = issn; j.rss = rss; }
+                apiUpdateFeed(modalEditId, jname, rss, issn, function(data) {
+                    var j = journals.find(function(x) { return x.id === modalEditId; });
+                    if (j) { j.name = jname; j.issn = issn; j.rss = rss; }
+                    renderJournalList();
+                });
             } else {
-                journals.push({
-                    id: 'j' + Date.now(),
-                    name: jname,
-                    issn: issn || '',
-                    rss: rss || ''
+                apiCreateFeed(jname, rss, issn, function(data) {
+                    journals.push({
+                        id: data.id,
+                        name: data.name,
+                        issn: data.issn || '',
+                        rss: data.url || ''
+                    });
+                    renderJournalList();
                 });
             }
-            renderJournalList();
         }
         prefCloseSubModal();
     };
@@ -1173,12 +1309,13 @@
     // ============================================================
     // 초기 렌더링
     // ============================================================
+    resetDeleteConfirmStates();
     // 모델 레지스트리 로드 → 완료 후 프로필 로드 (modelLabel 생성에 필요)
     fetchLLMModels(function() {
         fetchProfiles();
     });
     fetchEmail();
-    renderJournalList();
+    fetchFeeds();
 
     // 배경 클릭 시 닫기
     document.getElementById('pref-overlay').addEventListener('click', function(e) {

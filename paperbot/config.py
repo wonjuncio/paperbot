@@ -49,6 +49,16 @@ class LLMProfile:
     api_key: str
 
 
+@dataclass
+class Feed:
+    """A single RSS journal feed entry."""
+
+    id: str
+    name: str
+    url: str
+    issn: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Singleton metaclass
 # ---------------------------------------------------------------------------
@@ -93,6 +103,9 @@ class Settings(metaclass=_SettingsMeta):
     # LLM profiles
     llm_profiles: list[LLMProfile] = field(default_factory=list)
     active_llm_id: Optional[str] = None
+
+    # RSS feeds
+    feeds: list[Feed] = field(default_factory=list)
 
     # ── Computed properties ────────────────────────────────────────────
 
@@ -145,6 +158,9 @@ class Settings(metaclass=_SettingsMeta):
             metadata_dir / "llm_profiles.yaml"
         )
 
+        # Load RSS feeds from .metadata/feeds.yaml
+        feeds = _load_feeds_as_objects(metadata_dir / "feeds.yaml")
+
         return cls(
             contact_email=contact_email,
             db_path=base_dir / "papers.db",
@@ -153,6 +169,7 @@ class Settings(metaclass=_SettingsMeta):
             export_dir=base_dir / "exports",
             llm_profiles=llm_profiles,
             active_llm_id=active_llm_id,
+            feeds=feeds,
         )
 
     @classmethod
@@ -329,3 +346,57 @@ def load_feeds(feeds_path: Path) -> list[dict[str, Any]]:
     with open(feeds_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
     return data.get("feeds", [])
+
+
+def _load_feeds_as_objects(path: Path) -> list[Feed]:
+    """Load RSS feeds from ``feeds.yaml`` as :class:`Feed` objects.
+
+    Each feed is assigned a stable short ID derived from a UUID.
+    """
+    import uuid
+
+    if not path.exists():
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            return []
+
+        raw_feeds = data.get("feeds") or []
+        feeds: list[Feed] = []
+        for entry in raw_feeds:
+            if isinstance(entry, dict) and entry.get("name") and entry.get("url"):
+                feeds.append(
+                    Feed(
+                        id=str(uuid.uuid4())[:8],
+                        name=str(entry["name"]),
+                        url=str(entry["url"]),
+                        issn=str(entry.get("issn", "")),
+                    )
+                )
+        return feeds
+    except Exception:
+        return []
+
+
+def save_feeds(path: Path, feeds: list[Feed]) -> None:
+    """Persist RSS feeds to ``feeds.yaml``."""
+    data: dict[str, Any] = {
+        "feeds": [
+            {
+                "name": f.name,
+                "url": f.url,
+                "issn": f.issn,
+            }
+            for f in feeds
+        ],
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(
+            data,
+            f,
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False,
+        )

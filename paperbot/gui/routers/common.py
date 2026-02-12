@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from paperbot import __version__
-from paperbot.config import LLMProfile, load_llm_models, save_email, save_llm_profiles
+from paperbot.config import Feed, LLMProfile, load_llm_models, save_email, save_feeds, save_llm_profiles
 from paperbot.gui.state import state, templates
 
 router = APIRouter()
@@ -271,4 +271,75 @@ async def delete_profile(profile_id: str):
     if s.active_llm_id == profile_id:
         s.active_llm_id = s.llm_profiles[0].id if s.llm_profiles else None
     _sync_to_disk()
+    return JSONResponse({"ok": True})
+
+
+# ============================================================================
+# Feeds (Journal) CRUD  (/api/feeds)
+# ============================================================================
+
+
+class FeedPayload(BaseModel):
+    """Request body for creating / updating a journal feed."""
+    name: str
+    url: str
+    issn: str = ""
+
+
+def _feeds_path():
+    return state.settings.feeds_path
+
+
+def _sync_feeds_to_disk() -> None:
+    """Write current in-memory feeds to ``feeds.yaml``."""
+    save_feeds(_feeds_path(), state.settings.feeds)
+
+
+@router.get("/api/feeds")
+async def list_feeds():
+    """Return all journal feeds."""
+    s = state.settings
+    return JSONResponse([
+        {"id": f.id, "name": f.name, "url": f.url, "issn": f.issn}
+        for f in s.feeds
+    ])
+
+
+@router.post("/api/feeds")
+async def create_feed(body: FeedPayload):
+    """Create a new journal feed. Returns the created feed."""
+    import uuid
+    fid = str(uuid.uuid4())[:8]
+    feed = Feed(id=fid, name=body.name, url=body.url, issn=body.issn)
+    state.settings.feeds.append(feed)
+    _sync_feeds_to_disk()
+    return JSONResponse(
+        {"id": feed.id, "name": feed.name, "url": feed.url, "issn": feed.issn},
+        status_code=201,
+    )
+
+
+@router.put("/api/feeds/{feed_id}")
+async def update_feed(feed_id: str, body: FeedPayload):
+    """Update an existing journal feed."""
+    s = state.settings
+    target = next((f for f in s.feeds if f.id == feed_id), None)
+    if target is None:
+        return JSONResponse({"error": "Feed not found"}, status_code=404)
+    target.name = body.name
+    target.url = body.url
+    target.issn = body.issn
+    _sync_feeds_to_disk()
+    return JSONResponse({"id": target.id, "name": target.name, "url": target.url, "issn": target.issn})
+
+
+@router.delete("/api/feeds/{feed_id}")
+async def delete_feed(feed_id: str):
+    """Delete a journal feed."""
+    s = state.settings
+    before = len(s.feeds)
+    s.feeds = [f for f in s.feeds if f.id != feed_id]
+    if len(s.feeds) == before:
+        return JSONResponse({"error": "Feed not found"}, status_code=404)
+    _sync_feeds_to_disk()
     return JSONResponse({"ok": True})
