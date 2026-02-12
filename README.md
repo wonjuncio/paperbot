@@ -20,23 +20,36 @@ uv sync --extra dev
 
 ## 설정
 
-1. `.env` 파일 생성:
+모든 사용자 설정은 `.metadata/` 폴더에 YAML 파일로 관리된다.
+처음 실행 시 `.metadata.example/`에서 자동으로 복사된다.
 
-```bash
-cp .env.example .env
-```
+1. 이메일 설정 (선택사항):
 
-2. `.env` 편집 (선택사항):
+`.metadata/email.yaml` 편집:
 
-```
-CONTACT_EMAIL=you@example.com
+```yaml
+contact_email: "you@example.com"
 ```
 
 이메일은 Crossref API의 "polite pool" 사용을 위해 권장된다.
 
+2. LLM 프로필 설정 (선택사항):
+
+`.metadata/llm_profiles.yaml` 편집:
+
+```yaml
+active: "openai-default"
+
+profiles:
+  - id: "openai-default"
+    name: "OpenAI 기본"
+    model: "gpt-4o"
+    api_key: "sk-..."
+```
+
 3. `feeds.yaml` 편집하여 수집할 저널 RSS 추가
 
-프로젝트 루트의 `feeds.yaml`에 피드 목록을 YAML 형식으로 적는다.
+`.metadata/feeds.yaml`에 피드 목록을 YAML 형식으로 적는다.
 
 | 필드 | 필수 | 설명 |
 |------|------|------|
@@ -58,6 +71,8 @@ feeds:
 ```
 
 저널마다 RSS URL 형식이 다르므로, 각 저널 홈페이지에서 공식 RSS 링크를 확인한 뒤 그 주소를 `url`에 넣으면 됨.
+
+> **참고:** `.metadata/` 폴더는 `.gitignore`에 포함되어 있으므로 API 키 등 민감 정보가 git에 커밋되지 않는다.
 
 처음 실행 시 `paperbot fetch`를 하면 프로젝트 폴더에 `papers.db`가 생성된다.
 
@@ -82,7 +97,7 @@ uv run paperbot
 | **Picked 탭** | export 대상으로 선택된 논문 목록. 각 항목에서 "Unpick"으로 선택 해제 |
 | **Archive 탭** | DB에 저장된 전체 논문 목록(상태·ID·제목·저널·발행일·DOI) |
 
-GUI에서도 `feeds.yaml`, `papers.db`, `exports/` 경로는 CLI와 동일하게 사용된다.
+GUI에서도 `.metadata/feeds.yaml`, `papers.db`, `exports/` 경로는 CLI와 동일하게 사용된다.
 
 ### CLI (터미널)
 
@@ -182,8 +197,8 @@ uv run paperbot export
 <details>
 
 - db 동기화
-- 설정 창 제작 (.env 설정용, feeds.yaml 설정용 - feeds 없으면 toast 알림?)
-- LLM 연동 with api key (chatbot?)
+- 설정 창 제작 (.metadata/ 설정용 - feeds 없으면 toast 알림?)
+- LLM 연동 with api key (chatbot?) — `.metadata/llm_profiles.yaml`로 관리
 - 레이지 로딩(Lazy Loading) & 가상 스크롤
 - DB 용량을 게이지 바 + auto cleanup?
 - clustering 가시화 for read papers

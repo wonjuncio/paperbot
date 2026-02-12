@@ -1,0 +1,21 @@
+# LLM 프로필 설정
+# active: 현재 사용 중인 프로필 ID
+# profiles: LLM 프로필 목록 (id, name, model, api_key)
+
+active: null
+
+profiles: []
+
+# 예시:
+# active: "openai-default"
+#
+# profiles:
+#   - id: "openai-default"
+#     name: "OpenAI 기본"
+#     model: "gpt-4o"
+#     api_key: "sk-..."
+#
+#   - id: "claude-backup"
+#     name: "Claude 백업"
+#     model: "claude-3-5-sonnet"
+#     api_key: "sk-ant-..."

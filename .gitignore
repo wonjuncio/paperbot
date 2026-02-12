@@ -36,9 +36,8 @@ uv.lock
 *.swo
 *~
 
-# Environment
-.env
-feeds.yaml
+# User metadata (API keys, email, feeds)
+.metadata/
 
 # Database
 *.db

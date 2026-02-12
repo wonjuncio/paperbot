@@ -173,6 +173,30 @@
     .pref-email-wrap.confirmed .pref-email-success { display: inline-flex; }
     .pref-email-wrap.confirmed.fade-out .pref-email-success { opacity: 0; transition: opacity 3s ease; }
     .pref-email-success.hidden-done { display: none !important; }
+    .pref-email-error {
+        display: none; font-size: 12px; color: #e05c5c;
+        margin-left: auto;
+    }
+    .pref-email-wrap.has-error .pref-email-error { display: inline; }
+    .pref-email-wrap.has-error .pref-email-success { display: none !important; }
+    .pref-email-wrap.has-error .pref-email-confirm .pref-input {
+        border-color: #b85450; box-shadow: 0 0 0 1px #b85450;
+        animation: field-shake 0.45s ease;
+    }
+    .pref-email-wrap.has-error.fade-error .pref-email-confirm .pref-input {
+        border-color: var(--paper-border); box-shadow: none;
+        transition: border-color 3s ease, box-shadow 3s ease;
+    }
+    .pref-email-wrap.has-error.fade-error .pref-email-error {
+        opacity: 0; transition: opacity 3s ease;
+    }
+    @keyframes field-shake {
+        0%, 100% { transform: translateX(0); }
+        20% { transform: translateX(-5px); }
+        40% { transform: translateX(5px); }
+        60% { transform: translateX(-3px); }
+        80% { transform: translateX(3px); }
+    }
     .pref-email-confirm { position: relative; }
     .pref-email-confirm .pref-input { width: 100%; padding-right: 44px; box-sizing: border-box; }
     .pref-email-wrap.confirmed .pref-email-confirm .pref-input { padding-right: 76px; }
@@ -289,39 +313,61 @@
     .pref-cred-card {
         background: var(--paper-card); border: 1px solid var(--paper-border);
         border-radius: 8px; padding: 14px 18px;
-        display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        display: flex; align-items: center; gap: 12px; flex-wrap: nowrap;
         transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
         cursor: pointer;
     }
     .pref-cred-card:hover { border-color: var(--paper-dim); box-shadow: var(--paper-card-hover-shadow); }
     .pref-cred-card.active { border-color: var(--paper-accent); background: var(--paper-accent-bg-subtle); box-shadow: var(--paper-active-shadow); }
     .pref-cred-card.active:hover { border-color: var(--paper-accent); }
-    .pref-cred-card .label { font-weight: 600; font-size: 13px; min-width: 120px; }
-    .pref-cred-card .model { font-size: 12px; color: var(--paper-dim); }
-    .pref-cred-card .key-mask { font-size: 11px; color: var(--paper-dim); font-family: monospace; }
-    .pref-cred-card .cred-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+    .pref-cred-card .label {
+        font-weight: 600; font-size: 13px;
+        width: 120px; flex-shrink: 0;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .pref-cred-card .model {
+        font-size: 12px; color: var(--paper-dim);
+        flex: 1 1 0; min-width: 0;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    
+    .pref-cred-card .cred-right { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; height: 28px; }
     .pref-cred-card .badge { font-size: 10px; padding: 3px 8px; border-radius: 10px; background: var(--paper-accent); color: #fff; font-weight: 600; }
-    .pref-cred-card .menu-wrap { position: relative; }
-    .pref-cred-card .menu-trigger {
-        width: 32px; height: 32px; padding: 0; border: none; background: transparent;
-        color: var(--paper-dim); border-radius: 6px; cursor: pointer;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 18px; line-height: 1; transition: color 0.2s, background 0.2s;
+    .pref-cred-card .cred-actions {
+        display: flex; align-items: center; gap: 4px;
+        opacity: 0; transition: opacity 0.2s;
     }
-    .pref-cred-card .menu-trigger:hover { color: var(--paper-text); background: var(--paper-hover-strong); }
-    .pref-cred-card .cred-dropdown {
-        display: none; position: absolute; right: 0; top: 100%; margin-top: 4px;
-        min-width: 120px; background: var(--paper-card); border: 1px solid var(--paper-border);
-        border-radius: 8px; box-shadow: var(--paper-dropdown-shadow); padding: 4px 0; z-index: 20;
+    .pref-cred-card:hover .cred-actions { opacity: 1; }
+    .pref-ccard-edit, .pref-ccard-del {
+        width: 28px; height: 28px; padding: 0; border-radius: 6px; cursor: pointer;
+        border: none; background: transparent; color: var(--paper-dim);
+        font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center;
+        transition: color 0.2s, background 0.2s;
     }
-    .pref-cred-card .menu-wrap.is-open .cred-dropdown { display: block; }
-    .pref-cred-card .cred-dropdown button {
-        display: block; width: 100%; padding: 10px 14px; border: none; background: none;
-        color: var(--paper-text); font-size: 13px; text-align: left; cursor: pointer;
-        transition: background 0.15s;
+    .pref-ccard-edit:hover { color: var(--paper-accent); background: var(--paper-accent-bg-medium); }
+    .pref-ccard-del:hover { color: #e05c5c; background: rgba(224,92,92,0.12); }
+    /* 삭제 확인 인라인 */
+    .pref-cred-card .cred-delete-confirm {
+        display: none; align-items: center; gap: 8px;
+        animation: prefCredFadeIn 0.2s ease-out;
     }
-    .pref-cred-card .cred-dropdown button:hover { background: var(--paper-hover); }
-    .pref-cred-card .cred-dropdown button.cred-menu-del { color: #e05c5c; }
+    @keyframes prefCredFadeIn {
+        from { opacity: 0; transform: translateX(10px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    .pref-cred-card.delete-confirm { background: rgba(220,38,38,0.05); border-color: rgba(239,68,68,0.5); }
+    .pref-cred-card.delete-confirm .cred-actions { display: none; }
+    .pref-cred-card.delete-confirm .cred-delete-confirm { display: flex; }
+    .pref-cred-card .cred-del-yes {
+        color: #ef4444; font-weight: 700; font-size: 12px; cursor: pointer;
+        background: none; border: none; padding: 2px 4px;
+    }
+    .pref-cred-card .cred-del-no {
+        color: var(--paper-dim); font-size: 12px; cursor: pointer;
+        background: none; border: none; padding: 2px 4px;
+    }
+    .pref-cred-card .cred-del-yes:hover { color: #dc2626; }
+    .pref-cred-card .cred-del-no:hover { color: var(--paper-text); }
     .pref-btn-add-cred {
         width: 100%; padding: 12px; border: 1px dashed var(--paper-border);
         background: transparent; color: var(--paper-dim); border-radius: 8px;
@@ -421,6 +467,7 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                         <span>입력 완료!</span>
                     </div>
+                    <div class="pref-email-error" id="pref-email-error">*잘못된 이메일 형식입니다.</div>
                 </div>
                 <div class="pref-email-confirm" id="pref-email-confirm">
                     <input type="email" class="pref-input" id="pref-user-email" placeholder="user@paperbot.com" autocomplete="email">
@@ -481,7 +528,7 @@
 </div>
 
 <!-- 공통 모달: LLM 프로필 / 저널 추가·수정 -->
-<div id="pref-modal-overlay" class="pref-modal-overlay" onclick="if(event.target===this) prefCloseSubModal()">
+<div id="pref-modal-overlay" class="pref-modal-overlay">
     <div class="pref-modal-box" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
         <div class="pref-modal-header">
             <h3 class="pref-modal-title" id="pref-modal-title">제목</h3>
@@ -500,10 +547,7 @@
                 <div class="pref-input-group">
                     <label>LLM 모델</label>
                     <select class="pref-select" id="pref-cred-model">
-                        <option value="gpt-4o">GPT-4o (OpenAI)</option>
-                        <option value="gpt-4o-mini">GPT-4o mini (OpenAI)</option>
-                        <option value="claude-3-5-sonnet">Claude 3.5 Sonnet (Anthropic)</option>
-                        <option value="claude-3-opus">Claude 3 Opus (Anthropic)</option>
+                        <option value="">로딩 중…</option>
                     </select>
                 </div>
                 <div class="pref-input-group" id="pref-cred-key-group">
@@ -512,7 +556,7 @@
                         <span class="error-msg">*필수 입력칸입니다.</span>
                     </div>
                     <div class="pref-peek-wrap" id="pref-cred-key-wrap">
-                        <input type="password" class="pref-input" id="pref-cred-key" placeholder="sk-... 또는 API 키" autocomplete="off">
+                        <input type="password" class="pref-input" id="pref-cred-key" placeholder="API 키" autocomplete="off">
                         <button type="button" class="pref-peek-btn" onclick="prefTogglePeek('pref-cred-key-wrap')" aria-label="비밀번호 보기">
                             <svg class="icon-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             <svg class="icon-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -543,7 +587,6 @@
             </div>
         </div>
         <div class="pref-modal-footer">
-            <button type="button" class="pref-btn-cancel" onclick="prefCloseSubModal()">취소</button>
             <button type="button" class="pref-btn-save" id="pref-modal-primary-btn" onclick="prefSubmitSubModal()">저장</button>
         </div>
     </div>
@@ -554,13 +597,10 @@
     'use strict';
 
     // ============================================================
-    // 데이터 (데모)
+    // 데이터 (API에서 로드)
     // ============================================================
-    var credentials = [
-        { id: '1', name: 'OpenAI 기본', model: 'gpt-4o', modelLabel: 'GPT-4o (OpenAI)', key: 'sk-your-openai-key' },
-        { id: '2', name: 'Claude 백업', model: 'claude-3-5-sonnet', modelLabel: 'Claude 3.5 Sonnet (Anthropic)', key: 'sk-ant-...' }
-    ];
-    var activeCredId = '1';
+    var credentials = [];
+    var activeCredId = null;
 
     var journals = [
         { id: 'j1', name: 'Nature Materials', issn: '1476-4660', rss: 'https://www.nature.com/nmaterials.rss' },
@@ -571,6 +611,119 @@
     var modalMode = null;
     var modalEditId = null;
     var emailConfirmed = false;
+
+    // ============================================================
+    // LLM 모델 레지스트리 (API에서 로드)
+    // ============================================================
+    var llmModels = [];  // [{id, name, provider_id, provider_name, base_url, context_window, max_output}, ...]
+
+    function fetchLLMModels(cb) {
+        fetch('/api/llm-models')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                llmModels = data || [];
+                populateModelSelect();
+                if (cb) cb();
+            })
+            .catch(function() {
+                llmModels = [];
+                populateModelSelect();
+                if (cb) cb();
+            });
+    }
+
+    // ============================================================
+    // LLM 프로필 (API에서 CRUD)
+    // ============================================================
+    function fetchProfiles() {
+        fetch('/api/llm-profiles')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                activeCredId = data.active || null;
+                credentials = (data.profiles || []).map(function(p) {
+                    return {
+                        id: p.id,
+                        name: p.name,
+                        model: p.model,
+                        modelLabel: getModelLabel(p.model),
+                        key: p.api_key
+                    };
+                });
+                renderCredList();
+            })
+            .catch(function() {
+                credentials = [];
+                activeCredId = null;
+                renderCredList();
+            });
+    }
+
+    function apiCreateProfile(name, model, apiKey, cb) {
+        fetch('/api/llm-profiles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, model: model, api_key: apiKey })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) { if (cb) cb(data); })
+        .catch(function() {});
+    }
+
+    function apiUpdateProfile(id, name, model, apiKey, cb) {
+        fetch('/api/llm-profiles/' + encodeURIComponent(id), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, model: model, api_key: apiKey })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) { if (cb) cb(data); })
+        .catch(function() {});
+    }
+
+    function apiDeleteProfile(id, cb) {
+        fetch('/api/llm-profiles/' + encodeURIComponent(id), { method: 'DELETE' })
+            .then(function(res) { return res.json(); })
+            .then(function(data) { if (cb) cb(data); })
+            .catch(function() {});
+    }
+
+    function apiSetActive(id) {
+        fetch('/api/llm-profiles/active', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id })
+        }).catch(function() {});
+    }
+
+    function populateModelSelect() {
+        var sel = document.getElementById('pref-cred-model');
+        if (!sel) return;
+        if (llmModels.length === 0) {
+            sel.innerHTML = '<option value="">모델 없음</option>';
+            return;
+        }
+        // 프로바이더별 <optgroup> 으로 그룹핑
+        var providers = {};
+        llmModels.forEach(function(m) {
+            if (!providers[m.provider_name]) providers[m.provider_name] = [];
+            providers[m.provider_name].push(m);
+        });
+        var html = '';
+        Object.keys(providers).forEach(function(pname) {
+            html += '<optgroup label="' + esc(pname) + '">';
+            providers[pname].forEach(function(m) {
+                html += '<option value="' + esc(m.id) + '">' + esc(m.name) + '</option>';
+            });
+            html += '</optgroup>';
+        });
+        sel.innerHTML = html;
+    }
+
+    function getModelLabel(modelId) {
+        var m = llmModels.find(function(x) { return x.id === modelId; });
+        if (!m) return modelId;
+        return m.name + ' (' + m.provider_name + ')';
+    }
 
     // ============================================================
     // 유틸
@@ -607,13 +760,75 @@
     };
 
     // ============================================================
-    // 이메일
+    // 이메일 (API 연동 + 포맷 검증)
     // ============================================================
+    var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    function fetchEmail() {
+        fetch('/api/email')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                var input = document.getElementById('pref-user-email');
+                if (!input) return;
+                var email = data.email || '';
+                input.value = email;
+                if (email) {
+                    emailConfirmed = true;
+                    var wrap = document.getElementById('pref-email-wrap');
+                    if (wrap) {
+                        wrap.classList.add('confirmed', 'border-done');
+                        var success = document.getElementById('pref-email-success');
+                        if (success) success.classList.add('hidden-done');
+                    }
+                    input.readOnly = true;
+                }
+            })
+            .catch(function() {});
+    }
+
+    function clearEmailError() {
+        var wrap = document.getElementById('pref-email-wrap');
+        if (wrap) wrap.classList.remove('has-error', 'fade-error');
+    }
+
+    function showEmailError() {
+        var wrap = document.getElementById('pref-email-wrap');
+        if (!wrap) return;
+        wrap.classList.add('has-error');
+        wrap.classList.remove('fade-error');
+        setTimeout(function() {
+            wrap.classList.add('fade-error');
+            setTimeout(function() {
+                wrap.classList.remove('has-error', 'fade-error');
+            }, 3000);
+        }, 1000);
+    }
+
+    function saveEmailToServer(email) {
+        fetch('/api/email', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email })
+        }).catch(function() {});
+    }
+
     window.prefConfirmEmail = function() {
         var wrap = document.getElementById('pref-email-wrap');
         var input = document.getElementById('pref-user-email');
         var success = document.getElementById('pref-email-success');
         if (!wrap || !input) return;
+        clearEmailError();
+
+        var value = input.value.trim();
+        if (!value) return;
+        if (!EMAIL_RE.test(value)) {
+            showEmailError();
+            return;
+        }
+
+        // 검증 통과 → 서버에 저장
+        saveEmailToServer(value);
+
         if (success) success.classList.remove('hidden-done');
         emailConfirmed = true;
         wrap.classList.add('confirmed');
@@ -634,9 +849,11 @@
         var success = document.getElementById('pref-email-success');
         if (!wrap || !input) return;
         emailConfirmed = false;
+        clearEmailError();
         wrap.classList.remove('confirmed', 'fade-out', 'border-done');
         if (success) success.classList.remove('hidden-done');
         input.readOnly = false;
+        input.focus();
     };
     window.prefResetEmail = function() {
         var wrap = document.getElementById('pref-email-wrap');
@@ -644,10 +861,13 @@
         var success = document.getElementById('pref-email-success');
         if (!wrap || !input) return;
         emailConfirmed = false;
+        clearEmailError();
         wrap.classList.remove('confirmed', 'fade-out', 'border-done');
         if (success) success.classList.add('hidden-done');
         input.readOnly = false;
         input.value = '';
+        // 빈 값으로 서버 업데이트
+        saveEmailToServer('');
     };
 
     var emailInput = document.getElementById('pref-user-email');
@@ -655,6 +875,8 @@
         emailInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') { e.preventDefault(); prefConfirmEmail(); }
         });
+        // 입력 중 에러 표시 자동 해제
+        emailInput.addEventListener('input', function() { clearEmailError(); });
     }
 
     // ============================================================
@@ -666,18 +888,19 @@
         var idAttr = function(id) { return (id + '').replace(/"/g, '&quot;'); };
         list.innerHTML = credentials.map(function(c) {
             var isActive = c.id === activeCredId;
-            return '<div class="pref-cred-card ' + (isActive ? 'active' : '') + '" data-id="' + c.id + '">' +
+            return '<div class="pref-cred-card ' + (isActive ? 'active' : '') + '" data-id="' + idAttr(c.id) + '">' +
                 '<span class="label">' + (c.name || c.modelLabel).escapeHtml() + '</span>' +
                 '<span class="model">' + c.modelLabel + '</span>' +
-                '<span class="key-mask">' + maskKey(c.key) + '</span>' +
                 '<div class="cred-right">' +
                     (isActive ? '<span class="badge">사용 중</span>' : '') +
-                    '<div class="menu-wrap">' +
-                        '<button type="button" class="menu-trigger" aria-label="메뉴">⋮</button>' +
-                        '<div class="cred-dropdown">' +
-                            '<button type="button" data-action="edit" data-cred-id="' + idAttr(c.id) + '">수정</button>' +
-                            '<button type="button" class="cred-menu-del" data-action="delete" data-cred-id="' + idAttr(c.id) + '">삭제</button>' +
-                        '</div>' +
+                    '<div class="cred-actions">' +
+                        '<button type="button" class="pref-ccard-edit" data-cred-id="' + idAttr(c.id) + '" aria-label="수정">&#9998;</button>' +
+                        '<button type="button" class="pref-ccard-del" data-cred-id="' + idAttr(c.id) + '" aria-label="삭제">&#128465;</button>' +
+                    '</div>' +
+                    '<div class="cred-delete-confirm">' +
+                        '<button type="button" class="cred-del-yes" data-cred-id="' + idAttr(c.id) + '">삭제</button>' +
+                        '<span style="color:var(--paper-dim);">|</span>' +
+                        '<button type="button" class="cred-del-no" data-cred-id="' + idAttr(c.id) + '">취소</button>' +
                     '</div>' +
                 '</div>' +
             '</div>';
@@ -686,43 +909,60 @@
 
     document.getElementById('pref-cred-list').addEventListener('click', function(e) {
         e.stopPropagation();
-        var trigger = e.target.closest('.menu-trigger');
-        var menuBtn = e.target.closest('.cred-dropdown button');
-        var insideMenu = e.target.closest('.menu-wrap');
-        if (trigger) {
-            var wrap = trigger.closest('.menu-wrap');
-            document.querySelectorAll('#pref-cred-list .menu-wrap.is-open').forEach(function(w) {
-                if (w !== wrap) w.classList.remove('is-open');
+
+        // 삭제 확인 → 실행
+        var yesBtn = e.target.closest('.cred-del-yes');
+        if (yesBtn && yesBtn.dataset.credId) {
+            prefDeleteCred(yesBtn.dataset.credId);
+            return;
+        }
+        // 삭제 취소
+        var noBtn = e.target.closest('.cred-del-no');
+        if (noBtn) {
+            var card = noBtn.closest('.pref-cred-card');
+            if (card) card.classList.remove('delete-confirm');
+            return;
+        }
+        // 휴지통 클릭 → 삭제 확인 모드
+        var delBtn = e.target.closest('.pref-ccard-del');
+        if (delBtn && delBtn.dataset.credId) {
+            var card = delBtn.closest('.pref-cred-card');
+            // 다른 카드의 확인 모드 해제
+            document.querySelectorAll('#pref-cred-list .pref-cred-card.delete-confirm').forEach(function(c) {
+                c.classList.remove('delete-confirm');
             });
-            wrap.classList.toggle('is-open');
+            if (card) card.classList.add('delete-confirm');
             return;
         }
-        if (menuBtn && menuBtn.dataset.credId) {
-            var action = menuBtn.dataset.action;
-            var id = menuBtn.dataset.credId;
-            menuBtn.closest('.menu-wrap').classList.remove('is-open');
-            if (action === 'edit') prefOpenCredModal(id);
-            else if (action === 'delete') prefDeleteCred(id);
+        // 연필 클릭 → 수정
+        var editBtn = e.target.closest('.pref-ccard-edit');
+        if (editBtn && editBtn.dataset.credId) {
+            prefOpenCredModal(editBtn.dataset.credId);
             return;
         }
-        if (!insideMenu) {
+        // 카드 클릭 → active 전환 (액션 버튼 영역 제외)
+        if (!e.target.closest('.cred-right')) {
             var card = e.target.closest('.pref-cred-card');
             if (card && card.dataset.id) {
                 activeCredId = card.dataset.id;
+                apiSetActive(activeCredId);
                 renderCredList();
             }
         }
     });
 
-    document.addEventListener('click', function() {
-        document.querySelectorAll('#pref-cred-list .menu-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
-    });
-
     function prefDeleteCred(id) {
-        if (!confirm('이 프로필을 삭제할까요?')) return;
-        credentials = credentials.filter(function(x) { return x.id !== id; });
-        if (activeCredId === id) activeCredId = credentials[0] ? credentials[0].id : null;
-        renderCredList();
+        var card = document.querySelector('.pref-cred-card[data-id="' + id + '"]');
+        if (card) {
+            card.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
+            card.style.transform = 'scale(0.95)';
+            card.style.opacity = '0';
+        }
+        apiDeleteProfile(id, function() {
+            credentials = credentials.filter(function(x) { return x.id !== id; });
+            if (activeCredId === id) activeCredId = credentials[0] ? credentials[0].id : null;
+            setTimeout(function() { renderCredList(); }, 200);
+        });
     }
 
     // ============================================================
@@ -793,7 +1033,8 @@
         document.getElementById('pref-modal-primary-btn').textContent = modalEditId ? '저장' : '추가';
 
         document.getElementById('pref-cred-name').value = '';
-        document.getElementById('pref-cred-model').value = 'gpt-4o';
+        var modelSel = document.getElementById('pref-cred-model');
+        if (modelSel && modelSel.options.length > 0) modelSel.selectedIndex = 0;
         document.getElementById('pref-cred-key').value = '';
         var keyWrap = document.getElementById('pref-cred-key-wrap');
         if (keyWrap) { keyWrap.classList.remove('is-visible'); keyWrap.querySelector('.pref-input').type = 'password'; keyWrap.querySelector('.pref-peek-btn').setAttribute('aria-label', '비밀번호 보기'); }
@@ -846,25 +1087,32 @@
         if (modalMode === 'cred') {
             var name = document.getElementById('pref-cred-name').value.trim() || null;
             var model = document.getElementById('pref-cred-model').value;
-            var modelLabel = document.getElementById('pref-cred-model').selectedOptions[0].text;
+            var modelLabel = getModelLabel(model);
             var key = document.getElementById('pref-cred-key').value.trim();
             var invalid = [];
             if (!name) invalid.push('pref-cred-name-group');
             if (!key) invalid.push('pref-cred-key-group');
             if (invalid.length) { showFieldErrors(invalid); return; }
             if (modalEditId) {
-                var c = credentials.find(function(x) { return x.id === modalEditId; });
-                if (c) { c.name = name; c.model = model; c.modelLabel = modelLabel; c.key = key; }
+                apiUpdateProfile(modalEditId, name, model, key, function(data) {
+                    var c = credentials.find(function(x) { return x.id === modalEditId; });
+                    if (c) { c.name = name; c.model = model; c.modelLabel = modelLabel; c.key = key; }
+                    renderCredList();
+                });
             } else {
-                credentials.push({
-                    id: String(Date.now()),
-                    name: name || modelLabel,
-                    model: model,
-                    modelLabel: modelLabel,
-                    key: key
+                apiCreateProfile(name, model, key, function(data) {
+                    credentials.push({
+                        id: data.id,
+                        name: data.name || modelLabel,
+                        model: data.model,
+                        modelLabel: modelLabel,
+                        key: data.api_key
+                    });
+                    // 첫 프로필이면 자동 active
+                    if (credentials.length === 1) activeCredId = data.id;
+                    renderCredList();
                 });
             }
-            renderCredList();
         } else if (modalMode === 'journal') {
             var jname = document.getElementById('pref-journal-name').value.trim();
             var issn = document.getElementById('pref-journal-issn').value.trim();
@@ -916,18 +1164,20 @@
     function onEsc(e) {
         if (e.key !== 'Escape') return;
         var subModal = document.getElementById('pref-modal-overlay');
-        if (subModal && subModal.classList.contains('is-open')) {
-            prefCloseSubModal();
-        } else {
-            toggleModal(false);
-        }
+        // 서브 모달(LLM/저널)이 열려 있으면 Escape 무시 — X 버튼으로만 닫힘
+        if (subModal && subModal.classList.contains('is-open')) return;
+        toggleModal(false);
     }
     document.addEventListener('keydown', onEsc);
 
     // ============================================================
     // 초기 렌더링
     // ============================================================
-    renderCredList();
+    // 모델 레지스트리 로드 → 완료 후 프로필 로드 (modelLabel 생성에 필요)
+    fetchLLMModels(function() {
+        fetchProfiles();
+    });
+    fetchEmail();
     renderJournalList();
 
     // 배경 클릭 시 닫기

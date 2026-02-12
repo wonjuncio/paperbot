@@ -1,0 +1,16 @@
+# 수집할 저널 RSS 피드 목록
+feeds:
+
+
+# 예시:
+#  - name: "npj Computational Materials"
+#    url: "https://www.nature.com/npjcompumats/rss"
+#    issn: "2057-3960"
+#
+#  - name: "Nature Computational Science"
+#    url: "https://www.nature.com/natcomputsci/rss"
+#    issn: "2662-8457"
+#
+#  - name: "Machine Learning: Science and Technology"
+#    url: "https://iopscience.iop.org/journal/rss/2632-2153"
+#    issn: "2632-2153"

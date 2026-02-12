@@ -1,0 +1,50 @@
+# LLM 모델 레지스트리
+# 앱이 지원하는 프로바이더 및 모델 카탈로그.
+# UI <select> 드롭다운과 API 호출 시 이 데이터를 참조합니다.
+#
+# llm_profiles.yaml 의 model 필드가 여기의 model id 를 참조합니다.
+# 새 모델 추가 시 이 파일만 수정하면 UI에 자동 반영됩니다.
+
+providers:
+  - id: openai
+    name: OpenAI
+    base_url: "https://api.openai.com/v1"
+    models:
+      - id: gpt-4.1
+        name: "GPT-4.1"
+        context_window: 1047576
+        max_output: 32768
+      - id: gpt-4.1-mini
+        name: "GPT-4.1 mini"
+        context_window: 1047576
+        max_output: 32768
+      - id: gpt-4.1-nano
+        name: "GPT-4.1 nano"
+        context_window: 1047576
+        max_output: 32768
+
+  - id: anthropic
+    name: Anthropic
+    base_url: "https://api.anthropic.com/v1"
+    models:
+      - id: claude-sonnet-4-20250514
+        name: "Claude Sonnet 4"
+        context_window: 200000
+        max_output: 16000
+      - id: claude-3-5-haiku-20241022
+        name: "Claude 3.5 Haiku"
+        context_window: 200000
+        max_output: 8192
+
+  - id: google
+    name: Google
+    base_url: "https://generativelanguage.googleapis.com/v1beta"
+    models:
+      - id: gemini-2.5-flash
+        name: "Gemini 2.5 Flash"
+        context_window: 1048576
+        max_output: 65536
+      - id: gemini-2.5-pro
+        name: "Gemini 2.5 Pro"
+        context_window: 1048576
+        max_output: 65536
