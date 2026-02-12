@@ -197,7 +197,6 @@ uv run paperbot export
 <details>
 
 - db 동기화
-- 설정 창 제작 (.metadata/ 설정용 - feeds 없으면 toast 알림?)
 - LLM 연동 with api key (chatbot?) — `.metadata/llm_profiles.yaml`로 관리
 - 레이지 로딩(Lazy Loading) & 가상 스크롤
 - DB 용량을 게이지 바 + auto cleanup?

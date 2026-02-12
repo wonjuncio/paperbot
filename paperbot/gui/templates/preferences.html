@@ -232,14 +232,7 @@
         border-color: var(--paper-border); box-shadow: none;
     }
 
-    /* Path box */
-    .pref-path-box { display: flex; gap: 8px; }
-    .pref-btn-path {
-        background: var(--paper-btn-path-bg); border: none; color: var(--paper-text-strong);
-        padding: 0 15px; border-radius: 4px;
-        cursor: pointer; transition: background 0.2s, color 0.2s; white-space: nowrap;
-    }
-    .pref-btn-path:hover { background: var(--paper-btn-path-hover); color: var(--paper-text-strong); }
+    /* Path box (read-only) */
 
     /* 하단 액션 바 */
     .pref-action-bar {
@@ -532,17 +525,15 @@
             <h2>Storage &amp; Database</h2>
             <div class="pref-field">
                 <label>SQLite Database Path</label>
-                <div class="pref-path-box">
-                    <input type="text" class="pref-input" value="./database/paperbot.db" readonly>
-                    <button class="pref-btn-path">Browse</button>
-                </div>
+                <input type="text" class="pref-input" id="pref-path-db" placeholder="papers.db" readonly>
             </div>
             <div class="pref-field">
-                <label>Export Extraction Path</label>
-                <div class="pref-path-box">
-                    <input type="text" class="pref-input" value="./downloads/papers" readonly>
-                    <button class="pref-btn-path">Browse</button>
-                </div>
+                <label>Metadata Directory</label>
+                <input type="text" class="pref-input" id="pref-path-metadata" placeholder=".metadata" readonly>
+            </div>
+            <div class="pref-field">
+                <label>Export Directory</label>
+                <input type="text" class="pref-input" id="pref-path-export" placeholder="exports" readonly>
             </div>
         </div>
 
@@ -838,6 +829,28 @@
             .then(function(data) { if (cb) cb(data); })
             .catch(function() {});
     }
+
+    // ============================================================
+    // Storage Paths (API 연동)
+    // ============================================================
+    function fetchPaths() {
+        fetch('/api/paths')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                var dbEl = document.getElementById('pref-path-db');
+                var metaEl = document.getElementById('pref-path-metadata');
+                var feedsEl = document.getElementById('pref-path-feeds');
+                var exportEl = document.getElementById('pref-path-export');
+                if (dbEl) dbEl.value = data.db_path || '';
+                if (metaEl) metaEl.value = data.metadata_dir || '';
+                if (feedsEl) feedsEl.value = data.feeds_path || '';
+                if (exportEl) exportEl.value = data.export_dir || '';
+            })
+            .catch(function() {});
+    }
+
+
+
 
     // ============================================================
     // 이메일 (API 연동 + 포맷 검증)
@@ -1290,7 +1303,6 @@
     // Save
     // ============================================================
     window.prefSaveSettings = function() {
-        // TODO: 실제 저장 로직 (API 호출 등)
         toggleModal(false);
     };
 
@@ -1316,6 +1328,7 @@
     });
     fetchEmail();
     fetchFeeds();
+    fetchPaths();
 
     // 배경 클릭 시 닫기
     document.getElementById('pref-overlay').addEventListener('click', function(e) {

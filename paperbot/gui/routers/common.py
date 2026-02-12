@@ -343,3 +343,20 @@ async def delete_feed(feed_id: str):
         return JSONResponse({"error": "Feed not found"}, status_code=404)
     _sync_feeds_to_disk()
     return JSONResponse({"ok": True})
+
+
+# ============================================================================
+# Storage Paths  (/api/paths)
+# ============================================================================
+
+
+@router.get("/api/paths")
+async def get_paths():
+    """Return current storage paths (read-only)."""
+    s = state.settings
+    return JSONResponse({
+        "db_path": str(s.db_path),
+        "metadata_dir": str(s.metadata_dir),
+        "feeds_path": str(s.feeds_path),
+        "export_dir": str(s.export_dir),
+    })
