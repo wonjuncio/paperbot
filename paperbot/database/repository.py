@@ -71,6 +71,22 @@ class PaperRepository:
                 "ON ranking_cache(library_hash);"
             )
 
+            # Embedding vector cache — keyed by (paper_id, model_name)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS embeddings (
+                    paper_id    INTEGER NOT NULL,
+                    model_name  TEXT NOT NULL,
+                    vector      BLOB NOT NULL,
+                    created_at  TEXT NOT NULL,
+                    PRIMARY KEY (paper_id, model_name),
+                    FOREIGN KEY (paper_id) REFERENCES papers(id)
+                );
+            """)
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_emb_model "
+                "ON embeddings(model_name);"
+            )
+
             # Migrate: drop legacy 'stage' column from ranking_cache
             cursor.execute("PRAGMA table_info(ranking_cache)")
             rc_columns = [row[1] for row in cursor.fetchall()]
@@ -633,6 +649,9 @@ class PaperRepository:
     ) -> None:
         """Persist ranking scores to the cache table.
 
+        Stale rows from a previous library_hash are purged automatically
+        so the table doesn't accumulate dead data over time.
+
         Args:
             entries: List of ``(paper_id, score)`` tuples.
             library_hash: The library fingerprint these scores belong to.
@@ -642,6 +661,11 @@ class PaperRepository:
         now = datetime.now(timezone.utc).isoformat()
         with self._connection() as conn:
             cursor = conn.cursor()
+            # Purge stale rows from previous library states
+            cursor.execute(
+                "DELETE FROM ranking_cache WHERE library_hash != ?",
+                (library_hash,),
+            )
             cursor.executemany(
                 """
                 INSERT OR REPLACE INTO ranking_cache
@@ -663,3 +687,135 @@ class PaperRepository:
             cursor.execute("DELETE FROM ranking_cache")
             conn.commit()
             return cursor.rowcount
+
+    # ------------------------------------------------------------------
+    # Embeddings
+    # ------------------------------------------------------------------
+
+    def get_paper_ids_without_embeddings(self, model_name: str) -> list[int]:
+        """Return IDs of papers that have no embedding for the given model.
+
+        Used for incremental encoding: only these papers need to be encoded.
+
+        Args:
+            model_name: Model identifier (e.g. 'allenai/specter2_base')
+
+        Returns:
+            List of paper IDs that lack an embedding for this model.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT p.id FROM papers p
+                LEFT JOIN embeddings e
+                    ON p.id = e.paper_id AND e.model_name = ?
+                WHERE e.paper_id IS NULL
+                ORDER BY p.id
+                """,
+                (model_name,),
+            )
+            return [row[0] for row in cursor.fetchall()]
+
+    def load_embeddings(
+        self, model_name: str, paper_ids: Optional[list[int]] = None,
+    ) -> dict[int, bytes]:
+        """Load cached embedding vectors from the DB.
+
+        Args:
+            model_name: Model identifier (e.g. 'allenai/specter2_base')
+            paper_ids: If set, load only these IDs. None loads all for the model.
+
+        Returns:
+            Dict mapping paper_id → raw bytes (float32 numpy vector via tobytes).
+            Caller converts back with ``np.frombuffer(blob, dtype=np.float32)``.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            if paper_ids is not None and paper_ids:
+                placeholders = ",".join("?" * len(paper_ids))
+                cursor.execute(
+                    f"""
+                    SELECT paper_id, vector FROM embeddings
+                    WHERE model_name = ? AND paper_id IN ({placeholders})
+                    """,
+                    [model_name] + paper_ids,
+                )
+            else:
+                cursor.execute(
+                    "SELECT paper_id, vector FROM embeddings WHERE model_name = ?",
+                    (model_name,),
+                )
+            return {row["paper_id"]: row["vector"] for row in cursor.fetchall()}
+
+    def save_embeddings(
+        self,
+        model_name: str,
+        entries: list[tuple[int, bytes]],
+    ) -> None:
+        """Save embedding vectors to the DB (upsert).
+
+        Args:
+            model_name: Model identifier (e.g. 'allenai/specter2_base')
+            entries: List of (paper_id, vector_bytes) tuples.
+                     vector_bytes = numpy_array.astype(np.float32).tobytes()
+        """
+        if not entries:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.executemany(
+                """
+                INSERT OR REPLACE INTO embeddings
+                    (paper_id, model_name, vector, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                [(pid, model_name, vec_bytes, now) for pid, vec_bytes in entries],
+            )
+            conn.commit()
+
+    def delete_embeddings(self, model_name: Optional[str] = None) -> int:
+        """Delete embeddings, optionally only for a specific model.
+
+        Args:
+            model_name: If set, delete only embeddings for this model.
+                        If None, delete ALL embeddings.
+
+        Returns:
+            Number of rows deleted.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            if model_name:
+                cursor.execute(
+                    "DELETE FROM embeddings WHERE model_name = ?",
+                    (model_name,),
+                )
+            else:
+                cursor.execute("DELETE FROM embeddings")
+            conn.commit()
+            return cursor.rowcount
+
+    def count_embeddings(self, model_name: Optional[str] = None) -> dict[str, int]:
+        """Count embeddings per model.
+
+        Args:
+            model_name: If set, count only for this model.
+
+        Returns:
+            Dict mapping model_name → count.
+        """
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            if model_name:
+                cursor.execute(
+                    "SELECT COUNT(*) as cnt FROM embeddings WHERE model_name = ?",
+                    (model_name,),
+                )
+                return {model_name: cursor.fetchone()["cnt"]}
+            else:
+                cursor.execute(
+                    "SELECT model_name, COUNT(*) as cnt FROM embeddings GROUP BY model_name"
+                )
+                return {row["model_name"]: row["cnt"] for row in cursor.fetchall()}

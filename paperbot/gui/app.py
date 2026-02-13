@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     state.exporter = MarkdownExporter(state.settings.export_dir)
     state.fetch_status = {"running": False, "message": "", "complete": False}
     # AI ranking service
-    state.ranker = RankingService()
+    state.ranker = RankingService(repo=state.repo)
     state._ranking_scores = {}
     state._ranking_top_ids = set()
     state._ranking_gold_ids = set()

@@ -53,6 +53,11 @@ from pathlib import Path as _Path
 
 _MODEL_CACHE_DIR = str(_Path(__file__).resolve().parent.parent.parent / ".models")
 
+# Type import for PaperRepository (avoid circular import at runtime)
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from paperbot.database.repository import PaperRepository
+
 
 
 
@@ -95,15 +100,13 @@ class RankingService:
       so restarts skip all encoding.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, repo: "PaperRepository") -> None:
+        self._repo = repo
         self._bi_encoder = None
 
         # Incremental per-paper embedding store:  paper_id → vector
         self._emb_store: dict[int, np.ndarray] = {}
         self._emb_loaded: bool = False
-        # Include model name in path → auto-invalidate if model changes
-        _safe_model = BI_ENCODER_MODEL.replace("/", "_")
-        self._emb_path: _Path = _Path(_MODEL_CACHE_DIR) / f"lib_emb_{_safe_model}.npz"
 
         # Library similarity distribution (sorted array of hybrid cosine
         # values among read papers).  Computed once per library state.
@@ -196,30 +199,26 @@ class RankingService:
     # -- incremental library embeddings --------------------------------------
 
     def _ensure_emb_loaded(self) -> None:
-        """Load persisted library embeddings from disk (first access only)."""
+        """Load persisted library embeddings from DB (first access only)."""
         if self._emb_loaded:
             return
         self._emb_loaded = True
-        if self._emb_path.exists():
-            try:
-                data = np.load(str(self._emb_path), allow_pickle=False)
-                for pid, emb in zip(
-                    data["ids"].tolist(), data["embeddings"]
-                ):
-                    self._emb_store[int(pid)] = emb
-            except Exception:
-                self._emb_store.clear()
+        try:
+            blobs = self._repo.load_embeddings(BI_ENCODER_MODEL)
+            for pid, raw in blobs.items():
+                self._emb_store[pid] = np.frombuffer(raw, dtype=np.float32).copy()
+        except Exception:
+            self._emb_store.clear()
 
-    def _save_embeddings(self) -> None:
-        """Persist the embedding store to a compressed ``.npz`` file."""
-        if not self._emb_store:
-            if self._emb_path.exists():
-                self._emb_path.unlink()
+    def _save_new_embeddings(self, new_entries: dict[int, np.ndarray]) -> None:
+        """Persist only newly encoded embeddings to the DB (incremental)."""
+        if not new_entries:
             return
-        self._emb_path.parent.mkdir(parents=True, exist_ok=True)
-        ids = np.array(list(self._emb_store.keys()), dtype=np.int64)
-        embs = np.stack(list(self._emb_store.values()))
-        np.savez_compressed(str(self._emb_path), ids=ids, embeddings=embs)
+        entries = [
+            (pid, emb.astype(np.float32).tobytes())
+            for pid, emb in new_entries.items()
+        ]
+        self._repo.save_embeddings(BI_ENCODER_MODEL, entries)
 
     def _get_lib_embeddings(
         self, read_papers: list[Paper],
@@ -247,15 +246,16 @@ class RankingService:
 
         # Encode only brand-new papers
         to_encode = [p for p in read_papers if p.id not in self._emb_store]
+        new_entries: dict[int, np.ndarray] = {}
         if to_encode:
             texts = [_paper_text(p) for p in to_encode]
             new_embs = self._encode(texts)
             for paper, emb in zip(to_encode, new_embs):
                 self._emb_store[paper.id] = emb
+                new_entries[paper.id] = emb
 
-        # Persist when the store changed
-        if to_encode or removed:
-            self._save_embeddings()
+        # Persist only newly encoded embeddings to DB
+        self._save_new_embeddings(new_entries)
 
         # Build matrix in read_papers order (index-consistent)
         return np.stack([self._emb_store[p.id] for p in read_papers])
@@ -541,17 +541,16 @@ class RankingService:
     # -- cache management ----------------------------------------------------
 
     def invalidate_cache(self) -> None:
-        """Clear all cached library embeddings and distribution.
+        """Clear in-memory caches (embeddings, distribution, centroid).
 
-        Call this when the user's READ library changes (e.g. after export)
-        or when the model version changes.
+        DB embeddings are **preserved** — they remain valid vectors
+        regardless of library composition changes.  Only the in-memory
+        working set and derived statistics are reset.
+
+        Call ``self._repo.delete_embeddings(BI_ENCODER_MODEL)`` directly
+        if a full DB purge is needed (e.g. model version change).
         """
         self._emb_store.clear()
         self._emb_loaded = False
         self._lib_dist = None
         self._centroid = None
-        if self._emb_path.exists():
-            try:
-                self._emb_path.unlink()
-            except OSError:
-                pass
