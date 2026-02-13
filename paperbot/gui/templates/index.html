@@ -6,6 +6,7 @@
     <title>PaperBot - AI Research Assistant</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <!-- Tailwind Config: OS 다크모드 자동 감지 + 커스텀 테마 -->
@@ -1376,6 +1377,67 @@
             color: var(--accent-primary);
             border-bottom-color: var(--accent-primary);
         }
+
+        /* ── Semantic Map ── */
+        .smap-dim-btn {
+            background: transparent;
+            color: var(--content-muted);
+            cursor: pointer;
+        }
+        .smap-dim-btn:hover {
+            color: var(--content-secondary);
+        }
+        .smap-dim-active {
+            background: var(--accent-primary) !important;
+            color: var(--content-inverse) !important;
+        }
+
+        /* Range slider */
+        .smap-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--border-base);
+            outline: none;
+        }
+        .smap-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            cursor: pointer;
+            border: 2px solid var(--surface-elevated);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+            transition: transform 0.15s ease;
+        }
+        .smap-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+        .smap-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            cursor: pointer;
+            border: 2px solid var(--surface-elevated);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+        }
+
+        /* Loading spinner */
+        .smap-spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid var(--border-base);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-surface-base text-content-primary h-screen flex overflow-hidden" hx-headers='{"X-Requested-With": "XMLHttpRequest"}'>
@@ -1385,9 +1447,9 @@
          ============================================================ -->
     <aside class="w-72 bg-surface-elevated border-r border-border-base flex flex-col shadow-sm">
         <!-- Logo -->
-        <div class="p-6 font-bold text-2xl tracking-tight">
+        <a href="#" class="block p-6 font-bold text-2xl tracking-tight no-underline" onclick="switchTab('new'); event.preventDefault();">
             <span class="bg-gradient-to-r from-accent-primary to-indigo-500 bg-clip-text text-transparent">PaperBot</span>
-        </div>
+        </a>
 
         <!-- Action Buttons (horizontal layout) -->
         <div class="px-4 flex gap-2 mb-4">
@@ -1598,12 +1660,86 @@
             </div>
         </header>
 
-        <!-- Semantic Placeholder (hidden by default) -->
-        <div id="semantic-content" class="hidden flex-1 flex items-center justify-center" style="color: var(--content-muted);">
-            <div class="text-center">
-                <i class="fa-solid fa-diagram-project text-4xl mb-4 opacity-30"></i>
-                <p class="text-lg font-medium mb-1" style="color: var(--content-secondary);">Semantic View</p>
-                <p class="text-sm">추후 구현 예정입니다.</p>
+        <!-- Semantic Map View (hidden by default) -->
+        <div id="semantic-content" class="hidden flex-1 flex flex-col overflow-hidden">
+            <!-- Control Bar -->
+            <div class="flex items-center gap-6 px-6 py-2.5" style="border-bottom: 1px solid var(--border-base); background-color: var(--surface-elevated);">
+                <!-- 2D / 3D Toggle -->
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--content-muted);">View</span>
+                    <div class="flex rounded-lg overflow-hidden" style="border: 1px solid var(--border-base);">
+                        <button id="btn-dim-2d" class="smap-dim-btn px-3 py-1 text-xs font-semibold transition-all" onclick="smapSetDim(2)">2D</button>
+                        <button id="btn-dim-3d" class="smap-dim-btn smap-dim-active px-3 py-1 text-xs font-semibold transition-all" onclick="smapSetDim(3)">3D</button>
+                    </div>
+                </div>
+
+                <!-- K Clusters Slider -->
+                <div class="flex items-center gap-2.5 flex-1 max-w-sm">
+                    <span class="text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap" style="color: var(--content-muted);">Clusters</span>
+                    <span id="smap-k-label" class="text-xs font-bold min-w-[32px] text-center" style="color: var(--accent-primary);">5</span>
+                    <input id="smap-k-slider" type="range" min="0" max="10" value="5" step="1"
+                           class="smap-slider flex-1" oninput="smapSetK(+this.value)">
+                </div>
+
+                <!-- Status Filter -->
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--content-muted);">Papers</span>
+                    <select id="smap-status-filter" class="text-xs rounded-lg px-2.5 py-1.5 outline-none cursor-pointer"
+                            style="background-color: var(--surface-overlay); border: 1px solid var(--border-base); color: var(--content-secondary);"
+                            onchange="smapReload(this.value)">
+                        <option value="all" selected>All Papers</option>
+                        <option value="new">New</option>
+                        <option value="read">Read</option>
+                        <option value="archived">Archived</option>
+                    </select>
+                </div>
+
+                <!-- Paper count -->
+                <div class="ml-auto flex items-center gap-2">
+                    <span id="smap-paper-count" class="text-[11px]" style="color: var(--content-muted);"></span>
+                </div>
+            </div>
+
+            <!-- Plot Area -->
+            <div class="flex-1 relative overflow-hidden" style="background-color: var(--surface-base);">
+                <!-- Loading Overlay -->
+                <div id="smap-loading" class="absolute inset-0 flex flex-col items-center justify-center z-10" style="background-color: var(--surface-base);">
+                    <div class="flex flex-col items-center gap-4">
+                        <div class="smap-spinner"></div>
+                        <p id="smap-loading-msg" class="text-sm font-medium" style="color: var(--content-secondary);">Semantic map 준비 중…</p>
+                    </div>
+                </div>
+                <!-- Empty State -->
+                <div id="smap-empty" class="hidden absolute inset-0 flex items-center justify-center z-10" style="background-color: var(--surface-base);">
+                    <div class="text-center">
+                        <i class="fa-solid fa-diagram-project text-4xl mb-4 opacity-20" style="color: var(--content-muted);"></i>
+                        <p class="text-sm" style="color: var(--content-muted);">표시할 논문이 없습니다.</p>
+                    </div>
+                </div>
+                <!-- Plotly Container -->
+                <div id="smap-plot" class="w-full h-full"></div>
+                <!-- Info Panel (shown on click) -->
+                <div id="smap-info" class="hidden absolute bottom-4 left-4 right-4 max-w-lg rounded-xl p-4 shadow-lg z-20 transition-all"
+                     style="background-color: var(--surface-elevated); border: 1px solid var(--border-base);">
+                    <button class="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center text-xs transition-colors"
+                            style="color: var(--content-muted);"
+                            onmouseover="this.style.color='var(--content-primary)'" onmouseout="this.style.color='var(--content-muted)'"
+                            onclick="document.getElementById('smap-info').classList.add('hidden')">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                    <div class="flex items-start gap-3">
+                        <div id="smap-info-cluster" class="w-3 h-3 rounded-full mt-1 flex-shrink-0"></div>
+                        <div class="flex-1 min-w-0">
+                            <p id="smap-info-title" class="text-sm font-semibold leading-snug mb-1" style="color: var(--content-primary);"></p>
+                            <div class="flex items-center gap-2 text-[11px]" style="color: var(--content-muted);">
+                                <span id="smap-info-journal"></span>
+                                <span>&middot;</span>
+                                <span id="smap-info-status" class="uppercase font-semibold"></span>
+                            </div>
+                            <div id="smap-info-top3" class="mt-2 text-[11px]" style="color: var(--content-secondary);"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1960,6 +2096,9 @@
             
             const url = '/papers/' + currentTab + (params.toString() ? '?' + params.toString() : '');
             htmx.ajax('GET', url, '#paper-list');
+            
+            // Also update semantic map if it's loaded
+            smapOnFilterChange();
         }
         
         // Journal filter state (chip-based)
@@ -2016,12 +2155,10 @@
         // ============================================
         function switchMainTab(tab) {
             const mainTabs = document.querySelectorAll('.main-tab');
-            mainTabs.forEach(t => {
-                t.classList.remove('main-tab-active');
-            });
+            mainTabs.forEach(t => t.classList.remove('main-tab-active'));
             const activeBtn = document.querySelector(`.main-tab[data-main-tab="${tab}"]`);
             if (activeBtn) activeBtn.classList.add('main-tab-active');
-            
+
             const homeContent = document.getElementById('home-content');
             const semanticContent = document.getElementById('semantic-content');
             if (tab === 'home') {
@@ -2030,7 +2167,423 @@
             } else {
                 homeContent.classList.add('hidden');
                 semanticContent.classList.remove('hidden');
+                // Trigger semantic map load on first open
+                if (!smapState.loaded && !smapState.loading) {
+                    smapReload(document.getElementById('smap-status-filter').value);
+                } else if (smapState.loaded) {
+                    // Resize plot when tab becomes visible
+                    requestAnimationFrame(() => Plotly.Plots.resize('smap-plot'));
+                }
             }
+        }
+
+        // ============================================
+        // Semantic Map — State & Constants
+        // ============================================
+        const SMAP_PALETTE = [
+            '#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6',
+            '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
+        ];
+        const SMAP_EDGE_COLOR = 'rgba(148,163,184,0.12)';
+        const SMAP_EDGE_HIGHLIGHT = 'rgba(99,102,241,0.5)';
+        const SMAP_ANIM_DURATION = 600;
+        const SMAP_ANIM_EASING = 'cubic-in-out';
+
+        const smapState = {
+            loaded: false,
+            loading: false,
+            data: null,         // full server response { points, n_papers }
+            dim: 3,             // 2 or 3
+            k: 5,               // 0 = no clustering, 2..10
+            pollTimer: null,
+            highlightId: null,  // currently hovered paper id
+        };
+
+        // ============================================
+        // Semantic Map — Data Loading
+        // ============================================
+        function smapReload(status) {
+            if (smapState.loading) return;
+            smapState.loading = true;
+            smapState.loaded = false;
+
+            // Show loading overlay
+            const loading = document.getElementById('smap-loading');
+            const empty = document.getElementById('smap-empty');
+            loading.classList.remove('hidden');
+            empty.classList.add('hidden');
+            document.getElementById('smap-loading-msg').textContent = 'Semantic map 준비 중…';
+
+            // Kick off server computation
+            fetch(`/api/semantic-map?status=${status}`)
+                .then(r => r.json())
+                .then(resp => {
+                    if (resp.status === 'ready') {
+                        smapOnDataReady(resp.data);
+                    } else if (resp.status === 'computing') {
+                        document.getElementById('smap-loading-msg').textContent = resp.message || '계산 중…';
+                        smapStartPoll();
+                    } else {
+                        document.getElementById('smap-loading-msg').textContent = resp.message || '오류 발생';
+                        smapState.loading = false;
+                    }
+                })
+                .catch(err => {
+                    console.error('Semantic map fetch error:', err);
+                    document.getElementById('smap-loading-msg').textContent = '네트워크 오류';
+                    smapState.loading = false;
+                });
+        }
+
+        function smapStartPoll() {
+            if (smapState.pollTimer) clearInterval(smapState.pollTimer);
+            smapState.pollTimer = setInterval(() => {
+                fetch('/api/semantic-map/status')
+                    .then(r => r.json())
+                    .then(resp => {
+                        if (resp.status === 'ready') {
+                            clearInterval(smapState.pollTimer);
+                            smapState.pollTimer = null;
+                            smapOnDataReady(resp.data);
+                        } else if (resp.status === 'computing') {
+                            document.getElementById('smap-loading-msg').textContent = resp.message || '계산 중…';
+                        } else if (resp.status === 'idle') {
+                            // Server lost state? Re-trigger
+                            clearInterval(smapState.pollTimer);
+                            smapState.pollTimer = null;
+                            smapState.loading = false;
+                            smapReload(document.getElementById('smap-status-filter').value);
+                        }
+                    })
+                    .catch(() => {});
+            }, 1500);
+        }
+
+        function smapOnDataReady(data) {
+            smapState.data = data;
+            smapState.loaded = true;
+            smapState.loading = false;
+
+            document.getElementById('smap-loading').classList.add('hidden');
+
+            if (!data.points || data.points.length === 0) {
+                document.getElementById('smap-empty').classList.remove('hidden');
+                document.getElementById('smap-paper-count').textContent = '';
+                return;
+            }
+
+            document.getElementById('smap-empty').classList.add('hidden');
+            document.getElementById('smap-paper-count').textContent = `${data.n_papers} papers`;
+
+            smapRender();
+        }
+
+        // ============================================
+        // Semantic Map — Rendering
+        // ============================================
+        function smapGetFilteredIndices() {
+            // Apply sidebar filters (keywords, journals, date) client-side
+            const pts = smapState.data.points;
+            const kws = keywords.map(k => k.toLowerCase());
+            const jfs = journalFilters;
+            const mode = keywordMode;
+
+            return pts.map((p, i) => {
+                let pass = true;
+
+                // Keyword filter
+                if (kws.length > 0) {
+                    const text = ((p.title || '') + ' ' + (p.journal || '')).toLowerCase();
+                    if (mode === 'or') {
+                        pass = kws.some(k => text.includes(k));
+                    } else {
+                        pass = kws.every(k => text.includes(k));
+                    }
+                }
+
+                // Journal filter
+                if (pass && jfs.length > 0) {
+                    pass = jfs.includes(p.journal);
+                }
+
+                // Date filter
+                if (pass && (dateFrom || dateTo)) {
+                    const d = p.published || '';
+                    if (dateFrom && d < dateFrom) pass = false;
+                    if (dateTo && d > dateTo) pass = false;
+                }
+
+                return pass;
+            });
+        }
+
+        function smapBuildTraces(visibleMask) {
+            const pts = smapState.data.points;
+            const dim = smapState.dim;
+            const k = smapState.k;
+
+            // Separate visible and ghost points
+            const vis = [], ghost = [];
+            pts.forEach((p, i) => {
+                (visibleMask[i] ? vis : ghost).push({ p, i });
+            });
+
+            const visIds = new Set(vis.map(v => v.p.id));
+
+            // Colors based on cluster
+            function getColor(p) {
+                if (k < 2 || !p.clusters[k] && p.clusters[k] !== 0) return '#6366f1';
+                return SMAP_PALETTE[p.clusters[k] % SMAP_PALETTE.length];
+            }
+
+            const traces = [];
+
+            // ── Edge trace (visible-visible only) ──
+            const edgeX = [], edgeY = [], edgeZ = [];
+            const drawnEdges = new Set();
+            vis.forEach(({ p }) => {
+                (p.top3 || []).forEach(nid => {
+                    if (!visIds.has(nid)) return;
+                    const key = Math.min(p.id, nid) + '-' + Math.max(p.id, nid);
+                    if (drawnEdges.has(key)) return;
+                    drawnEdges.add(key);
+                    const nb = pts.find(q => q.id === nid);
+                    if (!nb) return;
+                    if (dim === 3) {
+                        edgeX.push(p.x3, nb.x3, null);
+                        edgeY.push(p.y3, nb.y3, null);
+                        edgeZ.push(p.z3, nb.z3, null);
+                    } else {
+                        edgeX.push(p.x2, nb.x2, null);
+                        edgeY.push(p.y2, nb.y2, null);
+                    }
+                });
+            });
+
+            if (dim === 3) {
+                traces.push({
+                    type: 'scatter3d', mode: 'lines', name: 'connections',
+                    x: edgeX, y: edgeY, z: edgeZ,
+                    line: { width: 1, color: SMAP_EDGE_COLOR },
+                    hoverinfo: 'skip', showlegend: false,
+                });
+            } else {
+                traces.push({
+                    type: 'scatter', mode: 'lines', name: 'connections',
+                    x: edgeX, y: edgeY,
+                    line: { width: 0.8, color: SMAP_EDGE_COLOR },
+                    hoverinfo: 'skip', showlegend: false,
+                });
+            }
+
+            // ── Ghost points (filtered out) ──
+            if (ghost.length > 0) {
+                const gTrace = {
+                    mode: 'markers', name: 'filtered',
+                    x: ghost.map(g => dim === 3 ? g.p.x3 : g.p.x2),
+                    y: ghost.map(g => dim === 3 ? g.p.y3 : g.p.y2),
+                    marker: {
+                        size: 3, opacity: 0.08,
+                        color: 'var(--content-muted)',
+                    },
+                    hoverinfo: 'skip', showlegend: false,
+                    customdata: ghost.map(g => g.p.id),
+                };
+                if (dim === 3) {
+                    gTrace.type = 'scatter3d';
+                    gTrace.z = ghost.map(g => g.p.z3);
+                } else {
+                    gTrace.type = 'scatter';
+                }
+                traces.push(gTrace);
+            }
+
+            // ── Visible points ──
+            if (vis.length > 0) {
+                const vTrace = {
+                    mode: 'markers', name: 'papers',
+                    x: vis.map(v => dim === 3 ? v.p.x3 : v.p.x2),
+                    y: vis.map(v => dim === 3 ? v.p.y3 : v.p.y2),
+                    text: vis.map(v => {
+                        const t = v.p.title.length > 60 ? v.p.title.slice(0, 57) + '…' : v.p.title;
+                        return `${t}<br><i>${v.p.journal || 'N/A'}</i>`;
+                    }),
+                    hoverinfo: 'text',
+                    marker: {
+                        size: 8, opacity: 0.85,
+                        color: vis.map(v => getColor(v.p)),
+                        line: { width: 0.5, color: 'rgba(255,255,255,0.6)' },
+                    },
+                    showlegend: false,
+                    customdata: vis.map(v => v.p.id),
+                };
+                if (dim === 3) {
+                    vTrace.type = 'scatter3d';
+                    vTrace.z = vis.map(v => v.p.z3);
+                } else {
+                    vTrace.type = 'scatter';
+                }
+                traces.push(vTrace);
+            }
+
+            return traces;
+        }
+
+        function smapGetLayout() {
+            const dim = smapState.dim;
+            const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const bg = isDark ? '#0f172a' : '#f1f5f9';
+            const gridColor = isDark ? 'rgba(148,163,184,0.08)' : 'rgba(148,163,184,0.15)';
+            const fontColor = isDark ? '#94a3b8' : '#64748b';
+
+            const common = {
+                paper_bgcolor: bg,
+                plot_bgcolor: bg,
+                margin: { l: 0, r: 0, t: 0, b: 0 },
+                font: { family: 'system-ui, -apple-system, sans-serif', color: fontColor, size: 11 },
+                hovermode: 'closest',
+                showlegend: false,
+            };
+
+            if (dim === 3) {
+                common.scene = {
+                    xaxis: { showgrid: true, gridcolor: gridColor, zeroline: false, showticklabels: false, title: '' },
+                    yaxis: { showgrid: true, gridcolor: gridColor, zeroline: false, showticklabels: false, title: '' },
+                    zaxis: { showgrid: true, gridcolor: gridColor, zeroline: false, showticklabels: false, title: '' },
+                    bgcolor: bg,
+                    camera: { eye: { x: 1.5, y: 1.5, z: 1.0 } },
+                };
+            } else {
+                common.xaxis = { showgrid: false, zeroline: false, showticklabels: false };
+                common.yaxis = { showgrid: false, zeroline: false, showticklabels: false };
+                common.dragmode = 'pan';
+            }
+
+            return common;
+        }
+
+        function smapRender() {
+            if (!smapState.data || !smapState.data.points.length) return;
+
+            const mask = smapGetFilteredIndices();
+            const traces = smapBuildTraces(mask);
+            const layout = smapGetLayout();
+
+            Plotly.newPlot('smap-plot', traces, layout, {
+                responsive: true,
+                displayModeBar: false,
+                scrollZoom: true,
+            });
+
+            // Click handler
+            const plotEl = document.getElementById('smap-plot');
+            plotEl.on('plotly_click', function(eventData) {
+                if (!eventData.points || !eventData.points.length) return;
+                const pt = eventData.points[0];
+                const paperId = pt.customdata;
+                if (!paperId) return;
+                smapShowInfo(paperId);
+            });
+
+            // Hover: highlight top-3 edges
+            plotEl.on('plotly_hover', function(eventData) {
+                if (!eventData.points || !eventData.points.length) return;
+                const paperId = eventData.points[0].customdata;
+                if (paperId && paperId !== smapState.highlightId) {
+                    smapState.highlightId = paperId;
+                    // Could add edge highlighting here in future
+                }
+            });
+
+            plotEl.on('plotly_unhover', function() {
+                smapState.highlightId = null;
+            });
+        }
+
+        // ============================================
+        // Semantic Map — Controls
+        // ============================================
+        function smapSetDim(dim) {
+            if (dim === smapState.dim) return;
+            smapState.dim = dim;
+
+            // Update toggle buttons
+            document.querySelectorAll('.smap-dim-btn').forEach(btn => btn.classList.remove('smap-dim-active'));
+            document.getElementById(dim === 2 ? 'btn-dim-2d' : 'btn-dim-3d').classList.add('smap-dim-active');
+
+            if (smapState.loaded) smapRender();
+        }
+
+        function smapSetK(k) {
+            smapState.k = k;
+            const label = document.getElementById('smap-k-label');
+            label.textContent = k < 2 ? 'None' : k;
+            label.style.color = k < 2 ? 'var(--content-muted)' : 'var(--accent-primary)';
+
+            if (!smapState.loaded || !smapState.data) return;
+
+            // Animate color change only (no full re-render)
+            const mask = smapGetFilteredIndices();
+            const pts = smapState.data.points;
+            const vis = pts.filter((_, i) => mask[i]);
+
+            function getColor(p) {
+                if (k < 2 || !p.clusters[k] && p.clusters[k] !== 0) return '#6366f1';
+                return SMAP_PALETTE[p.clusters[k] % SMAP_PALETTE.length];
+            }
+
+            // The visible points trace is the last one
+            const plotEl = document.getElementById('smap-plot');
+            const traceIdx = plotEl.data.length - 1;
+            if (traceIdx >= 0 && vis.length > 0) {
+                Plotly.animate('smap-plot', {
+                    data: [{ 'marker.color': vis.map(v => getColor(v)) }],
+                    traces: [traceIdx],
+                }, {
+                    transition: { duration: 400, easing: SMAP_ANIM_EASING },
+                    frame: { duration: 400 },
+                });
+            }
+        }
+
+        // ============================================
+        // Semantic Map — Filter Integration
+        // ============================================
+        function smapOnFilterChange() {
+            if (!smapState.loaded) return;
+            smapRender();
+        }
+
+        // ============================================
+        // Semantic Map — Info Panel
+        // ============================================
+        function smapShowInfo(paperId) {
+            const p = smapState.data.points.find(pt => pt.id === paperId);
+            if (!p) return;
+
+            const k = smapState.k;
+            const clusterColor = (k >= 2 && p.clusters[k] !== undefined)
+                ? SMAP_PALETTE[p.clusters[k] % SMAP_PALETTE.length]
+                : '#6366f1';
+
+            document.getElementById('smap-info-cluster').style.backgroundColor = clusterColor;
+            document.getElementById('smap-info-title').textContent = p.title;
+            document.getElementById('smap-info-journal').textContent = p.journal || 'N/A';
+            document.getElementById('smap-info-status').textContent = p.status;
+
+            // Top-3 similar papers
+            const top3El = document.getElementById('smap-info-top3');
+            if (p.top3 && p.top3.length > 0) {
+                const items = p.top3.map(nid => {
+                    const nb = smapState.data.points.find(q => q.id === nid);
+                    return nb ? `<div class="truncate">→ ${escapeHtml(nb.title)}</div>` : '';
+                }).filter(Boolean).join('');
+                top3El.innerHTML = `<div class="font-semibold mb-1" style="color: var(--content-muted);">Most Similar</div>${items}`;
+            } else {
+                top3El.innerHTML = '';
+            }
+
+            document.getElementById('smap-info').classList.remove('hidden');
         }
         
         // ============================================

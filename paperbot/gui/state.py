@@ -14,6 +14,7 @@ from paperbot.services.crossref_service import CrossrefService
 from paperbot.services.export_service import MarkdownExporter
 from paperbot.services.feed_service import FeedService
 from paperbot.services.ranking_service import RankingService
+from paperbot.services.semantic_map_service import SemanticMapService
 
 
 # ============================================================================
@@ -40,6 +41,12 @@ class AppState:
     _ranking_computing: bool = False
     # Ranking progress toast state
     ranking_status: dict = {"phase": "idle", "message": ""}
+    # Semantic map
+    semantic_map_service: Optional[SemanticMapService] = None
+    _smap_cache: Optional[dict] = None
+    _smap_cache_status: Optional[str] = None
+    _smap_computing: bool = False
+    smap_status: dict = {"phase": "idle", "message": ""}
 
 
 state = AppState()

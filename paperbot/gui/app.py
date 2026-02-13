@@ -11,9 +11,10 @@ from paperbot.services.crossref_service import CrossrefService
 from paperbot.services.export_service import MarkdownExporter
 from paperbot.services.feed_service import FeedService
 from paperbot.services.ranking_service import RankingService
+from paperbot.services.semantic_map_service import SemanticMapService
 
 from paperbot.gui.state import preload_models, state
-from paperbot.gui.routers import actions, common, papers
+from paperbot.gui.routers import actions, common, papers, semantic
 
 
 @asynccontextmanager
@@ -37,6 +38,14 @@ async def lifespan(app: FastAPI):
     state._ranking_computed = False
     state._ranking_computing = False
     state.ranking_status = {"phase": "idle", "message": ""}
+    # Semantic map service
+    state.semantic_map_service = SemanticMapService(
+        ranking_service=state.ranker, repo=state.repo,
+    )
+    state._smap_cache = None
+    state._smap_cache_status = None
+    state._smap_computing = False
+    state.smap_status = {"phase": "idle", "message": ""}
     # Pre-load AI models into RAM in a background thread (non-blocking)
     threading.Thread(target=preload_models, daemon=True).start()
     yield
@@ -48,3 +57,4 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(common.router)
 app.include_router(papers.router)
 app.include_router(actions.router)
+app.include_router(semantic.router)
