@@ -14,10 +14,46 @@ from paperbot.services.openalex_service import get_paper_info as openalex_get_pa
 
 router = APIRouter()
 
+# Page size for lazy-loaded list (same for initial and append)
+PAGE_SIZE = 100
+
 
 # ============================================================================
 # Paper List Endpoints
 # ============================================================================
+
+
+def _paper_list_response(
+    request: Request,
+    papers: list,
+    tab: str,
+    empty_message: str,
+    offset: int,
+    append: bool,
+    has_more: bool,
+    **template_ctx,
+) -> HTMLResponse:
+    """Build list or cards-only response and set pagination headers."""
+    if append:
+        r = templates.TemplateResponse(
+            "partials/paper_list_cards.html",
+            {"request": request, "papers": papers, "tab": tab, **template_ctx},
+        )
+    else:
+        r = templates.TemplateResponse(
+            "partials/paper_list.html",
+            {
+                "request": request,
+                "papers": papers,
+                "tab": tab,
+                "empty_message": empty_message,
+                **template_ctx,
+            },
+        )
+    r.headers["X-Paper-Count"] = str(len(papers))
+    r.headers["X-Has-More"] = "true" if has_more else "false"
+    r.headers["X-Next-Offset"] = str(offset + PAGE_SIZE)
+    return r
 
 
 @router.get("/papers/new", response_class=HTMLResponse)
@@ -31,10 +67,14 @@ async def papers_new(
     keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
     date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
     date_to: str = Query("", description="End date (YYYY-MM-DD)"),
+    offset: int = Query(0, description="Pagination offset for lazy load"),
 ):
     """Get new papers list (partial for HTMX)."""
     journal_filter = journal if journal else None
-    papers = state.repo.find_by_status("new", limit=200, sort_by="published", order="desc", journal=journal_filter)
+    papers = state.repo.find_by_status(
+        "new", limit=PAGE_SIZE, offset=offset, sort_by="published", order="desc", journal=journal_filter
+    )
+    raw_len = len(papers)
 
     # Filter by search query if provided
     if q:
@@ -66,27 +106,24 @@ async def papers_new(
         gold_ids = state._ranking_gold_ids
         blue_ids = state._ranking_blue_ids
     elif not state._ranking_computing:
-        # Kick off background computation so next reload has scores
         start_ranking_bg()
 
     # Apply sorting
     sort_papers(papers, sort_by, order, scores)
 
-    response = templates.TemplateResponse(
-        "partials/paper_list.html",
-        {
-            "request": request,
-            "papers": papers,
-            "tab": "new",
-            "empty_message": "새로운 논문이 없습니다. Fetch New 버튼을 클릭하세요.",
-            "scores": scores,
-            "top_ids": top_ids,
-            "gold_ids": gold_ids,
-            "blue_ids": blue_ids,
-        },
+    return _paper_list_response(
+        request,
+        papers,
+        "new",
+        "새로운 논문이 없습니다. Fetch New 버튼을 클릭하세요.",
+        offset,
+        append=(offset > 0),
+        has_more=(raw_len == PAGE_SIZE),
+        scores=scores,
+        top_ids=top_ids,
+        gold_ids=gold_ids,
+        blue_ids=blue_ids,
     )
-    response.headers["X-Paper-Count"] = str(len(papers))
-    return response
 
 
 @router.get("/papers/picked", response_class=HTMLResponse)
@@ -99,9 +136,11 @@ async def papers_picked(
     keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
     date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
     date_to: str = Query("", description="End date (YYYY-MM-DD)"),
+    offset: int = Query(0, description="Pagination offset for lazy load"),
 ):
     """Get picked papers list (partial for HTMX)."""
-    papers = state.repo.find_picked(limit=100, order="desc")
+    papers = state.repo.find_picked(limit=PAGE_SIZE, offset=offset, order="desc")
+    raw_len = len(papers)
 
     if q:
         q_lower = q.lower()
@@ -111,24 +150,24 @@ async def papers_picked(
             or q_lower in (p.journal or "").lower()
         ]
 
-    # Filter by keywords
     if keywords:
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
         papers = filter_by_keywords(papers, kw_list, keyword_mode)
 
-    # Filter by date range
     if date_from or date_to:
         papers = filter_by_date(papers, date_from or None, date_to or None, "published")
 
-    # Apply sorting
     sort_papers(papers, sort_by, order)
 
-    response = templates.TemplateResponse(
-        "partials/paper_list.html",
-        {"request": request, "papers": papers, "tab": "picked", "empty_message": "선택된 논문이 없습니다."},
+    return _paper_list_response(
+        request,
+        papers,
+        "picked",
+        "선택된 논문이 없습니다.",
+        offset,
+        append=(offset > 0),
+        has_more=(raw_len == PAGE_SIZE),
     )
-    response.headers["X-Paper-Count"] = str(len(papers))
-    return response
 
 
 @router.get("/papers/archive", response_class=HTMLResponse)
@@ -142,10 +181,14 @@ async def papers_archive(
     keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
     date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
     date_to: str = Query("", description="End date (YYYY-MM-DD)"),
+    offset: int = Query(0, description="Pagination offset for lazy load"),
 ):
     """Get archived papers list (partial for HTMX)."""
     journal_filter = journal if journal else None
-    papers = state.repo.find_by_status("archived", limit=500, sort_by="date", order="desc", journal=journal_filter)
+    papers = state.repo.find_by_status(
+        "archived", limit=PAGE_SIZE, offset=offset, sort_by="date", order="desc", journal=journal_filter
+    )
+    raw_len = len(papers)
 
     if q:
         q_lower = q.lower()
@@ -155,24 +198,24 @@ async def papers_archive(
             or q_lower in (p.journal or "").lower()
         ]
 
-    # Filter by keywords
     if keywords:
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
         papers = filter_by_keywords(papers, kw_list, keyword_mode)
 
-    # Filter by date range
     if date_from or date_to:
         papers = filter_by_date(papers, date_from or None, date_to or None, "published")
 
-    # Apply sorting
     sort_papers(papers, sort_by, order)
 
-    response = templates.TemplateResponse(
-        "partials/paper_list.html",
-        {"request": request, "papers": papers, "tab": "archive", "empty_message": "아카이브된 논문이 없습니다."},
+    return _paper_list_response(
+        request,
+        papers,
+        "archive",
+        "아카이브된 논문이 없습니다.",
+        offset,
+        append=(offset > 0),
+        has_more=(raw_len == PAGE_SIZE),
     )
-    response.headers["X-Paper-Count"] = str(len(papers))
-    return response
 
 
 @router.get("/papers/read", response_class=HTMLResponse)
@@ -186,10 +229,14 @@ async def papers_read(
     keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
     date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
     date_to: str = Query("", description="End date (YYYY-MM-DD)"),
+    offset: int = Query(0, description="Pagination offset for lazy load"),
 ):
     """Get read papers list (partial for HTMX). Sorted by created_at (read date)."""
     journal_filter = journal if journal else None
-    papers = state.repo.find_by_status("read", limit=500, sort_by="created_at", order="desc", journal=journal_filter)
+    papers = state.repo.find_by_status(
+        "read", limit=PAGE_SIZE, offset=offset, sort_by="created_at", order="desc", journal=journal_filter
+    )
+    raw_len = len(papers)
 
     if q:
         q_lower = q.lower()
@@ -200,24 +247,24 @@ async def papers_read(
             or q_lower in (p.authors or "").lower()
         ]
 
-    # Filter by keywords
     if keywords:
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
         papers = filter_by_keywords(papers, kw_list, keyword_mode)
 
-    # Filter by date range (using created_at for Read tab)
     if date_from or date_to:
         papers = filter_by_date(papers, date_from or None, date_to or None, "created_at")
 
-    # Apply sorting
     sort_papers(papers, sort_by, order)
 
-    response = templates.TemplateResponse(
-        "partials/paper_list.html",
-        {"request": request, "papers": papers, "tab": "read", "empty_message": "읽은 논문이 없습니다."},
+    return _paper_list_response(
+        request,
+        papers,
+        "read",
+        "읽은 논문이 없습니다.",
+        offset,
+        append=(offset > 0),
+        has_more=(raw_len == PAGE_SIZE),
     )
-    response.headers["X-Paper-Count"] = str(len(papers))
-    return response
 
 
 @router.get("/papers/all", response_class=HTMLResponse)
@@ -231,10 +278,14 @@ async def papers_all(
     keyword_mode: str = Query("or", description="Keyword match mode: or/and"),
     date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
     date_to: str = Query("", description="End date (YYYY-MM-DD)"),
+    offset: int = Query(0, description="Pagination offset for lazy load"),
 ):
     """Get all papers in DB (partial for HTMX)."""
     journal_filter = journal if journal else None
-    papers = state.repo.find_all(limit=500, sort_by="date", order="desc", journal=journal_filter)
+    papers = state.repo.find_all(
+        limit=PAGE_SIZE, offset=offset, sort_by="date", order="desc", journal=journal_filter
+    )
+    raw_len = len(papers)
 
     if q:
         q_lower = q.lower()
@@ -245,24 +296,24 @@ async def papers_all(
             or q_lower in (p.authors or "").lower()
         ]
 
-    # Filter by keywords
     if keywords:
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
         papers = filter_by_keywords(papers, kw_list, keyword_mode)
 
-    # Filter by date range
     if date_from or date_to:
         papers = filter_by_date(papers, date_from or None, date_to or None, "published")
 
-    # Apply sorting
     sort_papers(papers, sort_by, order)
 
-    response = templates.TemplateResponse(
-        "partials/paper_list.html",
-        {"request": request, "papers": papers, "tab": "all", "empty_message": "논문이 없습니다."},
+    return _paper_list_response(
+        request,
+        papers,
+        "all",
+        "논문이 없습니다.",
+        offset,
+        append=(offset > 0),
+        has_more=(raw_len == PAGE_SIZE),
     )
-    response.headers["X-Paper-Count"] = str(len(papers))
-    return response
 
 
 # ============================================================================

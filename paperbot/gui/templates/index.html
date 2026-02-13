@@ -1677,21 +1677,15 @@
                 <div class="flex items-center gap-2.5 flex-1 max-w-sm">
                     <span class="text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap" style="color: var(--content-muted);">Clusters</span>
                     <span id="smap-k-label" class="text-xs font-bold min-w-[32px] text-center" style="color: var(--accent-primary);">5</span>
-                    <input id="smap-k-slider" type="range" min="0" max="10" value="5" step="1"
+                    <input id="smap-k-slider" type="range" min="0" max="9" value="4" step="1"
                            class="smap-slider flex-1" oninput="smapSetK(+this.value)">
                 </div>
 
-                <!-- Status Filter -->
+                <!-- Current library label (synced with sidebar tabs) -->
                 <div class="flex items-center gap-2">
-                    <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--content-muted);">Papers</span>
-                    <select id="smap-status-filter" class="text-xs rounded-lg px-2.5 py-1.5 outline-none cursor-pointer"
-                            style="background-color: var(--surface-overlay); border: 1px solid var(--border-base); color: var(--content-secondary);"
-                            onchange="smapReload(this.value)">
-                        <option value="all" selected>All Papers</option>
-                        <option value="new">New</option>
-                        <option value="read">Read</option>
-                        <option value="archived">Archived</option>
-                    </select>
+                    <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--content-muted);">Library</span>
+                    <span id="smap-lib-label" class="text-xs font-semibold px-2.5 py-1 rounded-md"
+                          style="background-color: var(--accent-primary-subtle); color: var(--accent-primary);">All</span>
                 </div>
 
                 <!-- Paper count -->
@@ -1910,6 +1904,10 @@
         let sortOrder = 'desc';      // desc = descending (↓), asc = ascending (↑)
         let selectedPaperId = null;  // id of paper whose detail is shown
         let shouldScrollToSelected = false;  // flag to scroll to selected card after sort change
+        let listOffset = 0;          // pagination offset for next append (lazy load)
+        let hasMore = false;         // true if more papers available for current tab/filters
+        let loadingMore = false;     // true while fetching next page (prevents double load)
+        let totalShown = 0;          // number of papers currently shown (for list title)
         const titles = { new: 'New Papers', picked: 'Picked Papers', archive: 'Archived Papers', read: 'Read Papers', all: 'All Papers' };
         
         // Default sort criteria per tab
@@ -2021,11 +2019,13 @@
             sortCriteria = item.dataset.value;
             updateSortDropdown();
             closeSortDropdown();
+            listOffset = 0;
             loadPapers();
         }
         
         function switchTab(tab) {
             currentTab = tab;
+            listOffset = 0;
             
             // Update library nav styles
             ['new', 'picked', 'archive', 'read', 'all'].forEach(t => {
@@ -2063,41 +2063,72 @@
             
             // Fetch papers
             loadPapers();
+            
+            // If semantic tab is visible, reload map for the new library tab
+            if (currentMainTab === 'semantic') {
+                smapSyncWithLibrary();
+            }
         }
         
         function toggleSortOrder(e) {
             if (e) e.stopPropagation();
             sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
             updateSortOrderIcon();
-            // Set flag to scroll to selected card after list reloads
             shouldScrollToSelected = selectedPaperId != null;
+            listOffset = 0;
             loadPapers();
         }
         
-        function loadPapers() {
+        function loadPapers(append) {
             const query = document.getElementById('search-input').value;
-            // Journal filter: get from active journal chips
             const journal = journalFilters.length > 0 ? journalFilters[0] : '';
             const params = new URLSearchParams();
             if (query) params.set('q', query);
             if (journal) params.set('journal', journal);
             params.set('sort_by', sortCriteria);
             params.set('order', sortOrder);
+            if (append) {
+                params.set('offset', String(listOffset));
+            } else {
+                listOffset = 0;
+            }
             
-            // Add keywords to params
             if (keywords.length > 0) {
                 params.set('keywords', keywords.join(','));
                 params.set('keyword_mode', keywordMode);
             }
-            
-            // Add date filter to params
             if (dateFrom) params.set('date_from', dateFrom);
             if (dateTo) params.set('date_to', dateTo);
             
             const url = '/papers/' + currentTab + (params.toString() ? '?' + params.toString() : '');
-            htmx.ajax('GET', url, '#paper-list');
             
-            // Also update semantic map if it's loaded
+            if (append) {
+                if (loadingMore || !hasMore) return;
+                loadingMore = true;
+                fetch(url, { headers: { 'Accept': 'text/html' } })
+                    .then(function(res) {
+                        hasMore = (res.headers.get('X-Has-More') === 'true');
+                        const next = res.headers.get('X-Next-Offset');
+                        if (next !== null) listOffset = parseInt(next, 10) || 0;
+                        const batchCount = parseInt(res.headers.get('X-Paper-Count') || '0', 10);
+                        totalShown += batchCount;
+                        return res.text();
+                    })
+                    .then(function(html) {
+                        const listEl = document.getElementById('paper-list');
+                        if (listEl) {
+                            listEl.insertAdjacentHTML('beforeend', html);
+                            htmx.process(listEl);
+                            const titleEl = document.getElementById('list-title');
+                            if (titleEl) titleEl.textContent = titles[currentTab] + ' (' + totalShown + (hasMore ? '+' : '') + ')';
+                        }
+                    })
+                    .catch(function() { hasMore = false; })
+                    .finally(function() { loadingMore = false; });
+                return;
+            }
+            
+            htmx.ajax('GET', url, '#paper-list');
             smapOnFilterChange();
         }
         
@@ -2153,7 +2184,10 @@
         // ============================================
         // Main Tab Switching (Home / Semantic)
         // ============================================
+        let currentMainTab = 'home';
+
         function switchMainTab(tab) {
+            currentMainTab = tab;
             const mainTabs = document.querySelectorAll('.main-tab');
             mainTabs.forEach(t => t.classList.remove('main-tab-active'));
             const activeBtn = document.querySelector(`.main-tab[data-main-tab="${tab}"]`);
@@ -2167,14 +2201,35 @@
             } else {
                 homeContent.classList.add('hidden');
                 semanticContent.classList.remove('hidden');
-                // Trigger semantic map load on first open
-                if (!smapState.loaded && !smapState.loading) {
-                    smapReload(document.getElementById('smap-status-filter').value);
-                } else if (smapState.loaded) {
-                    // Resize plot when tab becomes visible
-                    requestAnimationFrame(() => Plotly.Plots.resize('smap-plot'));
-                }
+                smapSyncWithLibrary();
             }
+        }
+
+        /** Sync semantic map with the current library tab. */
+        function smapSyncWithLibrary() {
+            const status = smapTabToStatus(currentTab);
+            smapUpdateLibLabel();
+            // If data already loaded for this status, just re-render with current filters
+            if (smapState.loaded && smapState.loadedStatus === status) {
+                smapRender();
+                requestAnimationFrame(() => Plotly.Plots.resize('smap-plot'));
+                return;
+            }
+            // Otherwise (re)load from server
+            smapReload();
+        }
+
+        /** Map sidebar tab name → server status parameter */
+        function smapTabToStatus(tab) {
+            const map = { 'new': 'new', 'picked': 'picked', 'archive': 'archived', 'read': 'read', 'all': 'all' };
+            return map[tab] || 'all';
+        }
+
+        /** Update the library label badge in semantic control bar */
+        function smapUpdateLibLabel() {
+            const labels = { 'new': 'New', 'picked': 'Picked', 'archive': 'Archived', 'read': 'Read', 'all': 'All' };
+            const el = document.getElementById('smap-lib-label');
+            if (el) el.textContent = labels[currentTab] || 'All';
         }
 
         // ============================================
@@ -2192,6 +2247,7 @@
         const smapState = {
             loaded: false,
             loading: false,
+            loadedStatus: null, // which library tab was loaded
             data: null,         // full server response { points, n_papers }
             dim: 3,             // 2 or 3
             k: 5,               // 0 = no clustering, 2..10
@@ -2202,10 +2258,13 @@
         // ============================================
         // Semantic Map — Data Loading
         // ============================================
-        function smapReload(status) {
+        function smapReload() {
+            const status = smapTabToStatus(currentTab);
+
             if (smapState.loading) return;
             smapState.loading = true;
             smapState.loaded = false;
+            smapState.loadedStatus = status;
 
             // Show loading overlay
             const loading = document.getElementById('smap-loading');
@@ -2213,6 +2272,7 @@
             loading.classList.remove('hidden');
             empty.classList.add('hidden');
             document.getElementById('smap-loading-msg').textContent = 'Semantic map 준비 중…';
+            document.getElementById('smap-info').classList.add('hidden');
 
             // Kick off server computation
             fetch(`/api/semantic-map?status=${status}`)
@@ -2252,7 +2312,7 @@
                             clearInterval(smapState.pollTimer);
                             smapState.pollTimer = null;
                             smapState.loading = false;
-                            smapReload(document.getElementById('smap-status-filter').value);
+                            smapReload();
                         }
                     })
                     .catch(() => {});
@@ -2322,41 +2382,46 @@
             const dim = smapState.dim;
             const k = smapState.k;
 
-            // Separate visible and ghost points
-            const vis = [], ghost = [];
+            // Keep only visible (filter-matched) points
+            const vis = [];
             pts.forEach((p, i) => {
-                (visibleMask[i] ? vis : ghost).push({ p, i });
+                if (visibleMask[i]) vis.push(p);
             });
 
-            const visIds = new Set(vis.map(v => v.p.id));
+            const visIds = new Set(vis.map(v => v.id));
+            // Build a fast lookup by id for edge drawing
+            const byId = {};
+            vis.forEach(p => { byId[p.id] = p; });
 
-            // Colors based on cluster
+            // Cluster color (JSON keys are strings, so use String(k))
             function getColor(p) {
-                if (k < 2 || !p.clusters[k] && p.clusters[k] !== 0) return '#6366f1';
-                return SMAP_PALETTE[p.clusters[k] % SMAP_PALETTE.length];
+                if (k < 2) return '#6366f1';
+                const c = p.clusters[String(k)];
+                if (c === undefined || c === null) return '#6366f1';
+                return SMAP_PALETTE[c % SMAP_PALETTE.length];
             }
+
+            // Coordinate helpers
+            function px(p) { return dim === 3 ? p.x3 : p.x2; }
+            function py(p) { return dim === 3 ? p.y3 : p.y2; }
+            function pz(p) { return p.z3; }
 
             const traces = [];
 
-            // ── Edge trace (visible-visible only) ──
+            // ── Edge trace (only between two visible points) ──
             const edgeX = [], edgeY = [], edgeZ = [];
             const drawnEdges = new Set();
-            vis.forEach(({ p }) => {
+            vis.forEach(p => {
                 (p.top3 || []).forEach(nid => {
                     if (!visIds.has(nid)) return;
                     const key = Math.min(p.id, nid) + '-' + Math.max(p.id, nid);
                     if (drawnEdges.has(key)) return;
                     drawnEdges.add(key);
-                    const nb = pts.find(q => q.id === nid);
+                    const nb = byId[nid];
                     if (!nb) return;
-                    if (dim === 3) {
-                        edgeX.push(p.x3, nb.x3, null);
-                        edgeY.push(p.y3, nb.y3, null);
-                        edgeZ.push(p.z3, nb.z3, null);
-                    } else {
-                        edgeX.push(p.x2, nb.x2, null);
-                        edgeY.push(p.y2, nb.y2, null);
-                    }
+                    edgeX.push(px(p), px(nb), null);
+                    edgeY.push(py(p), py(nb), null);
+                    if (dim === 3) edgeZ.push(pz(p), pz(nb), null);
                 });
             });
 
@@ -2376,50 +2441,28 @@
                 });
             }
 
-            // ── Ghost points (filtered out) ──
-            if (ghost.length > 0) {
-                const gTrace = {
-                    mode: 'markers', name: 'filtered',
-                    x: ghost.map(g => dim === 3 ? g.p.x3 : g.p.x2),
-                    y: ghost.map(g => dim === 3 ? g.p.y3 : g.p.y2),
-                    marker: {
-                        size: 3, opacity: 0.08,
-                        color: 'var(--content-muted)',
-                    },
-                    hoverinfo: 'skip', showlegend: false,
-                    customdata: ghost.map(g => g.p.id),
-                };
-                if (dim === 3) {
-                    gTrace.type = 'scatter3d';
-                    gTrace.z = ghost.map(g => g.p.z3);
-                } else {
-                    gTrace.type = 'scatter';
-                }
-                traces.push(gTrace);
-            }
-
             // ── Visible points ──
             if (vis.length > 0) {
                 const vTrace = {
                     mode: 'markers', name: 'papers',
-                    x: vis.map(v => dim === 3 ? v.p.x3 : v.p.x2),
-                    y: vis.map(v => dim === 3 ? v.p.y3 : v.p.y2),
-                    text: vis.map(v => {
-                        const t = v.p.title.length > 60 ? v.p.title.slice(0, 57) + '…' : v.p.title;
-                        return `${t}<br><i>${v.p.journal || 'N/A'}</i>`;
+                    x: vis.map(px),
+                    y: vis.map(py),
+                    text: vis.map(p => {
+                        const t = p.title.length > 60 ? p.title.slice(0, 57) + '…' : p.title;
+                        return `${t}<br><i>${p.journal || 'N/A'}</i>`;
                     }),
                     hoverinfo: 'text',
                     marker: {
                         size: 8, opacity: 0.85,
-                        color: vis.map(v => getColor(v.p)),
+                        color: vis.map(getColor),
                         line: { width: 0.5, color: 'rgba(255,255,255,0.6)' },
                     },
                     showlegend: false,
-                    customdata: vis.map(v => v.p.id),
+                    customdata: vis.map(p => p.id),
                 };
                 if (dim === 3) {
                     vTrace.type = 'scatter3d';
-                    vTrace.z = vis.map(v => v.p.z3);
+                    vTrace.z = vis.map(pz);
                 } else {
                     vTrace.type = 'scatter';
                 }
@@ -2466,6 +2509,11 @@
             if (!smapState.data || !smapState.data.points.length) return;
 
             const mask = smapGetFilteredIndices();
+            const visCount = mask.filter(Boolean).length;
+            const totalCount = smapState.data.n_papers;
+            document.getElementById('smap-paper-count').textContent =
+                visCount === totalCount ? `${totalCount} papers` : `${visCount} / ${totalCount} papers`;
+
             const traces = smapBuildTraces(mask);
             const layout = smapGetLayout();
 
@@ -2514,11 +2562,15 @@
             if (smapState.loaded) smapRender();
         }
 
-        function smapSetK(k) {
+        /** Slider value 0..9 → actual k: Off,2,3,...,10 */
+        function smapSliderToK(v) { return v === 0 ? 0 : v + 1; }
+
+        function smapSetK(sliderVal) {
+            const k = smapSliderToK(sliderVal);
             smapState.k = k;
             const label = document.getElementById('smap-k-label');
-            label.textContent = k < 2 ? 'None' : k;
-            label.style.color = k < 2 ? 'var(--content-muted)' : 'var(--accent-primary)';
+            label.textContent = k === 0 ? 'Off' : k;
+            label.style.color = k === 0 ? 'var(--content-muted)' : 'var(--accent-primary)';
 
             if (!smapState.loaded || !smapState.data) return;
 
@@ -2528,8 +2580,10 @@
             const vis = pts.filter((_, i) => mask[i]);
 
             function getColor(p) {
-                if (k < 2 || !p.clusters[k] && p.clusters[k] !== 0) return '#6366f1';
-                return SMAP_PALETTE[p.clusters[k] % SMAP_PALETTE.length];
+                if (k < 2) return '#6366f1';
+                const c = p.clusters[String(k)];
+                if (c === undefined || c === null) return '#6366f1';
+                return SMAP_PALETTE[c % SMAP_PALETTE.length];
             }
 
             // The visible points trace is the last one
@@ -2537,7 +2591,7 @@
             const traceIdx = plotEl.data.length - 1;
             if (traceIdx >= 0 && vis.length > 0) {
                 Plotly.animate('smap-plot', {
-                    data: [{ 'marker.color': vis.map(v => getColor(v)) }],
+                    data: [{ 'marker.color': vis.map(getColor) }],
                     traces: [traceIdx],
                 }, {
                     transition: { duration: 400, easing: SMAP_ANIM_EASING },
@@ -2562,8 +2616,9 @@
             if (!p) return;
 
             const k = smapState.k;
-            const clusterColor = (k >= 2 && p.clusters[k] !== undefined)
-                ? SMAP_PALETTE[p.clusters[k] % SMAP_PALETTE.length]
+            const cVal = (k >= 2) ? p.clusters[String(k)] : undefined;
+            const clusterColor = (cVal !== undefined && cVal !== null)
+                ? SMAP_PALETTE[cVal % SMAP_PALETTE.length]
                 : '#6366f1';
 
             document.getElementById('smap-info-cluster').style.backgroundColor = clusterColor;
@@ -3127,6 +3182,20 @@
             }
         });
         
+        // Lazy load: when user scrolls near bottom of paper list, load next page
+        (function initListScrollLoad() {
+            const listEl = document.getElementById('paper-list');
+            if (!listEl) return;
+            const threshold = 400;
+            listEl.addEventListener('scroll', function() {
+                if (loadingMore || !hasMore) return;
+                const { scrollTop, clientHeight, scrollHeight } = listEl;
+                if (scrollTop + clientHeight >= scrollHeight - threshold) {
+                    loadPapers(true);
+                }
+            });
+        })();
+        
         // Fetch initial date range on page load & init sort UI
         document.addEventListener('DOMContentLoaded', function() {
             fetchDateRange();
@@ -3152,14 +3221,20 @@
                 });
         }
         
-        // After paper list load: update list title from X-Paper-Count header
+        // After paper list load: update list title, pagination state (hasMore, listOffset)
         document.body.addEventListener('htmx:afterOnLoad', function(evt) {
             const path = (evt.detail.pathInfo && evt.detail.pathInfo.requestPath) || '';
-            if (path.startsWith('/papers/') && evt.detail.xhr) {
+            const pathname = (path && path.split('?')[0]) || '';
+            const isListRequest = /^\/papers\/(new|picked|archive|read|all)$/.test(pathname);
+            if (isListRequest && evt.detail.xhr) {
                 const count = evt.detail.xhr.getResponseHeader('X-Paper-Count');
                 if (count !== null) {
                     document.getElementById('list-title').textContent = titles[currentTab] + ' (' + count + ')';
                 }
+                hasMore = (evt.detail.xhr.getResponseHeader('X-Has-More') === 'true');
+                const next = evt.detail.xhr.getResponseHeader('X-Next-Offset');
+                if (next !== null) listOffset = parseInt(next, 10) || 0;
+                totalShown = parseInt(count, 10) || 0;
             }
             // Detail view loaded: mark the corresponding paper card as selected (path like /papers/42)
             const detailMatch = path.match(/^\/papers\/(\d+)$/);

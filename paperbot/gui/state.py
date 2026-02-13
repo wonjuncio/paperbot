@@ -46,6 +46,7 @@ class AppState:
     _smap_cache: Optional[dict] = None
     _smap_cache_status: Optional[str] = None
     _smap_computing: bool = False
+    _smap_computing_status: Optional[str] = None
     smap_status: dict = {"phase": "idle", "message": ""}
 
 

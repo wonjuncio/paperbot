@@ -71,7 +71,6 @@ uv run paperbot export         # Markdown 내보내기
 - LLM chatbot - (short term: RAG, long term: GraphOntology)
 - 레이지 로딩(Lazy Loading) & 가상 스크롤 (기능 충돌은 없는지 - 선택된 논문 유지 기능 / fetch query 개수 등)
 - DB 용량을 게이지 바 + auto cleanup?
-- clustering 가시화 for read papers
 - AI Ranking: k-means cluster centroid — 다분야 서재(예: ML+생물학+경제학)에서 단일 centroid가 의미 희석되는 문제 대응. read papers를 k개 클러스터로 나눈 뒤 가장 가까운 클러스터의 centroid를 사용하면 분야별 정밀도 향상 가능
 
 </details>

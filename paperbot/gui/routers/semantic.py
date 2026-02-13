@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api", tags=["semantic"])
 
 @router.get("/semantic-map")
 async def semantic_map(
-    status: str = Query("all", description="Paper status filter: new, read, archived, all"),
+    status: str = Query("all", description="Paper status filter: new, read, archived, picked, all"),
 ):
     """Return full semantic map data (2D/3D coords, clusters, top-3 edges).
 
@@ -34,13 +34,18 @@ async def semantic_map(
         )
 
     # Check if computation is in progress
-    if getattr(state, "_smap_computing", False):
+    computing = getattr(state, "_smap_computing", False)
+    computing_status = getattr(state, "_smap_computing_status", None)
+
+    if computing:
+        # If computing for a different status, wait for it to finish
+        # then the client will re-trigger
         return JSONResponse({
             "status": "computing",
             "message": state.smap_status.get("message", "계산 중…"),
         })
 
-    # Return cached result if available
+    # Return cached result if available for the same status
     cached = getattr(state, "_smap_cache", None)
     if cached is not None:
         cached_status = getattr(state, "_smap_cache_status", None)
@@ -81,6 +86,7 @@ def _start_smap_bg(status: str) -> None:
     if getattr(state, "_smap_computing", False):
         return
     state._smap_computing = True
+    state._smap_computing_status = status
     state.smap_status = {"phase": "starting", "message": "Semantic map 준비 중…"}
     threading.Thread(
         target=_compute_smap, args=(status,), daemon=True,
@@ -95,6 +101,8 @@ def _compute_smap(status: str) -> None:
         # Gather papers based on status filter
         if status == "all":
             papers = state.repo.find_all(limit=2000)
+        elif status == "picked":
+            papers = state.repo.find_picked(limit=2000)
         elif status == "read":
             papers = state.repo.find_by_status("read", limit=2000)
         elif status == "new":
@@ -159,3 +167,4 @@ def _compute_smap(status: str) -> None:
         }
     finally:
         state._smap_computing = False
+        state._smap_computing_status = None

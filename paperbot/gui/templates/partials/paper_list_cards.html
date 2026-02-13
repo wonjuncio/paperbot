@@ -1,0 +1,121 @@
+{# Fragment for appending more cards (lazy load). No wrapper, no empty state. #}
+{% for paper in papers %}
+{% if tab == 'read' %}
+{% set current_date = paper.created_at | date_key %}
+{% set prev_date = loop.previtem.created_at | date_key if loop.previtem else '' %}
+{% if current_date != prev_date %}
+<!-- Date separator for read log -->
+<div class="px-4 py-0.5 text-xs text-content-muted border-b border-border-subtle bg-surface-overlay flex items-center gap-2">
+    <span class="text-content-muted opacity-60">—</span>
+    <span>Read on {{ paper.created_at | format_read_date }}</span>
+    <span class="text-content-muted opacity-60">—</span>
+</div>
+{% endif %}
+{% endif %}
+<div class="paper-item group {% if paper.is_picked %}paper-item-picked{% endif %}"
+     data-paper-id="{{ paper.id }}"
+     hx-get="/papers/{{ paper.id }}" 
+     hx-target="#detail-view"
+     hx-swap="innerHTML">
+    <div class="flex items-start gap-3">
+        <!-- Pick Checkbox: disabled for read status papers -->
+        <div class="pt-1" onclick="event.stopPropagation()">
+            {% if paper.status == 'read' %}
+            <input type="checkbox" 
+                   class="w-4 h-4 rounded border-border-base text-content-muted opacity-40 cursor-not-allowed" 
+                   disabled
+                   title="읽은 논문은 Pick할 수 없습니다"
+                   {% if paper.is_picked %}checked{% endif %}>
+            {% else %}
+            <input type="checkbox" 
+                   class="w-4 h-4 rounded border-border-base text-accent-primary focus:ring-accent-primary cursor-pointer" 
+                   hx-post="/actions/pick/{{ paper.id }}"
+                   hx-target="this"
+                   hx-swap="outerHTML"
+                   hx-trigger="click"
+                   hx-headers='{"X-Pick-Context": "list"}'
+                   {% if paper.is_picked %}checked{% endif %}>
+            {% endif %}
+        </div>
+        
+        <!-- Paper Info -->
+        <div class="flex-1 min-w-0">
+            <div class="flex items-start gap-2 mb-1.5">
+                <h3 class="paper-title font-medium text-content-primary leading-snug line-clamp-2 text-sm flex-1 min-w-0 transition-colors">
+                    {{ paper.title }}
+                </h3>
+                {% if scores is defined and scores and paper.id in scores %}
+                    {% set _score = scores.get(paper.id) %}
+                    {% set _is_top = (top_ids is defined and top_ids and paper.id in top_ids) %}
+                    {% set _is_gold = (gold_ids is defined and gold_ids and paper.id in gold_ids) %}
+                    {% set _is_blue = (blue_ids is defined and blue_ids and paper.id in blue_ids) %}
+                    {% if _is_top or _is_gold or _is_blue %}
+                        <span class="{% if _is_top %}badge-ai-gold-shimmer{% elif _is_gold %}badge-ai-gold{% else %}badge-ai-blue{% endif %} flex-shrink-0" title="AI Match Score">
+                            {{ _score|round(0)|int }}% match
+                        </span>
+                    {% endif %}
+                {% endif %}
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+                {% if paper.journal %}
+                <span class="bg-accent-muted-subtle text-content-secondary px-2 py-0.5 rounded font-medium truncate max-w-[150px]" title="{{ paper.journal }}">
+                    {{ paper.journal }}
+                </span>
+                {% endif %}
+                
+                {% if paper.published %}
+                <span class="text-content-muted">{{ paper.published }}</span>
+                {% endif %}
+                
+                {% if tab == 'all' %}
+                {% if paper.status == 'read' %}
+                <span class="badge-success text-[10px]">READ</span>
+                {% elif paper.status == 'archived' %}
+                <span class="badge-muted text-[10px]">ARCHIVE</span>
+                {% elif paper.status == 'new' %}
+                <span class="badge-primary text-[10px]">NEW</span>
+                {% endif %}
+                {% endif %}
+            </div>
+            
+            {% if paper.authors %}
+            <p class="text-xs text-content-muted mt-1 truncate" title="{{ paper.authors }}">
+                {{ paper.authors[:80] }}{% if paper.authors|length > 80 %}...{% endif %}
+            </p>
+            {% endif %}
+        </div>
+        
+        <!-- DOI Link -->
+        {% if paper.doi %}
+        <a href="https://doi.org/{{ paper.doi }}" 
+           target="_blank" 
+           rel="noopener noreferrer"
+           onclick="event.stopPropagation()"
+           class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-accent-primary-subtle rounded text-accent-primary"
+           title="DOI 링크 열기">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+            </svg>
+        </a>
+        {% endif %}
+    </div>
+    {% if tab == 'read' %}
+    <!-- Undo Read button: hover-only, bottom-right -->
+    <div class="flex justify-end mt-1" onclick="event.stopPropagation()">
+        <button class="opacity-0 group-hover:opacity-100 transition-all duration-150
+                       flex items-center gap-1 text-[11px] text-content-muted hover:text-accent-warning
+                       px-1.5 py-0.5 rounded hover:bg-accent-warning-subtle"
+                hx-post="/actions/undo-read/{{ paper.id }}"
+                hx-target="#toast-container"
+                hx-swap="beforeend"
+                title="이 논문을 Archive로 되돌립니다">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4"/>
+            </svg>
+            <span>Undo Read</span>
+        </button>
+    </div>
+    {% endif %}
+</div>
+{% endfor %}

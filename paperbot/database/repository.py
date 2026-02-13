@@ -176,6 +176,7 @@ class PaperRepository:
         self,
         status: str,
         limit: int = 50,
+        offset: int = 0,
         sort_by: str = "id",
         order: str = "desc",
         journal: Optional[str] = None,
@@ -185,6 +186,7 @@ class PaperRepository:
         Args:
             status: 'new', 'archived', 'read', or 'picked' (is_picked=1)
             limit: Maximum number of papers to return
+            offset: Number of rows to skip (for pagination)
             sort_by: Sort key - 'id', 'date', or 'title' (default: id)
             order: 'asc' or 'desc' for sort direction
             journal: If set, filter by this journal name only.
@@ -213,26 +215,26 @@ class PaperRepository:
         with self._connection() as conn:
             cursor = conn.cursor()
             if status == "picked":
-                params: tuple = (limit,) if journal is None else (journal, limit)
+                params: tuple = (limit, offset) if journal is None else (journal, limit, offset)
                 cursor.execute(
                     f"""
                     SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, created_at
                     FROM papers
                     WHERE {where_clause}
                     ORDER BY {order_sql}
-                    LIMIT ?
+                    LIMIT ? OFFSET ?
                     """,
                     params,
                 )
             else:
-                params = (status, limit) if journal is None else (status, journal, limit)
+                params = (status, limit, offset) if journal is None else (status, journal, limit, offset)
                 cursor.execute(
                     f"""
                     SELECT id, source, title, link, doi, published, authors, journal, abstract, status, is_picked, created_at
                     FROM papers
                     WHERE {where_clause}
                     ORDER BY {order_sql}
-                    LIMIT ?
+                    LIMIT ? OFFSET ?
                     """,
                     params,
                 )
@@ -258,11 +260,12 @@ class PaperRepository:
 
         return papers
 
-    def find_picked(self, limit: int = 100, order: str = "desc") -> list[Paper]:
+    def find_picked(self, limit: int = 100, offset: int = 0, order: str = "desc") -> list[Paper]:
         """Find picked papers for export (is_picked=1).
 
         Args:
             limit: Maximum number of papers to return
+            offset: Number of rows to skip (for pagination)
             order: 'asc' or 'desc' for date sort direction
 
         Returns:
@@ -277,9 +280,9 @@ class PaperRepository:
                 FROM papers
                 WHERE is_picked = 1
                 ORDER BY COALESCE(published, created_at) {direction}
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
-                (limit,),
+                (limit, offset),
             )
             rows = cursor.fetchall()
 
@@ -425,11 +428,12 @@ class PaperRepository:
             created_at=row["created_at"],
         )
 
-    def find_all(self, limit: int = 500, sort_by: str = "id", order: str = "desc", journal: Optional[str] = None) -> list[Paper]:
+    def find_all(self, limit: int = 500, offset: int = 0, sort_by: str = "id", order: str = "desc", journal: Optional[str] = None) -> list[Paper]:
         """Find papers from all statuses (for archive view).
 
         Args:
             limit: Maximum number of papers to return
+            offset: Number of rows to skip (for pagination)
             sort_by: 'id', 'date', or 'title'
             order: 'asc' or 'desc' for sort direction
             journal: If set, filter by this journal name only.
@@ -447,7 +451,7 @@ class PaperRepository:
         }
         order_sql = order_clauses.get(sort_by, f"id {direction}")
         where_clause = "" if journal is None else "WHERE journal = ?"
-        params: tuple = (limit,) if journal is None else (journal, limit)
+        params: tuple = (limit, offset) if journal is None else (journal, limit, offset)
         with self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -456,7 +460,7 @@ class PaperRepository:
                 FROM papers
                 {where_clause}
                 ORDER BY {order_sql}
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
                 params,
             )

@@ -45,6 +45,7 @@ async def lifespan(app: FastAPI):
     state._smap_cache = None
     state._smap_cache_status = None
     state._smap_computing = False
+    state._smap_computing_status = None
     state.smap_status = {"phase": "idle", "message": ""}
     # Pre-load AI models into RAM in a background thread (non-blocking)
     threading.Thread(target=preload_models, daemon=True).start()
